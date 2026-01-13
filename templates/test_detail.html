@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block title %}Test Detail - SuiteSync{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="/">Home</a></li>
+                <li class="breadcrumb-item"><a href="/tests">Tests</a></li>
+                <li class="breadcrumb-item active" aria-current="page">Test Detail</li>
+            </ol>
+        </nav>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12" id="test-detail-container">
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const testId = {{ test_id }};
+</script>
+<script src="{{ url_for('static', filename='js/test_detail.js') }}"></script>
+{% endblock %}
+

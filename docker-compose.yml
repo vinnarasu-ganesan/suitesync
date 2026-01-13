@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=production
+      - DATABASE_URL=postgresql://suitesync:suitesync@db:5432/suitesync
+      - REDIS_URL=redis://redis:6379/0
+    env_file:
+      - .env
+    volumes:
+      - ./repos:/app/repos
+      - ./logs:/app/logs
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+
+  db:
+    image: postgres:14-alpine
+    environment:
+      - POSTGRES_USER=suitesync
+      - POSTGRES_PASSWORD=suitesync
+      - POSTGRES_DB=suitesync
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+
+  # Optional: Celery worker for background tasks
+  # celery:
+  #   build: .
+  #   command: celery -A app.celery worker --loglevel=info
+  #   environment:
+  #     - FLASK_ENV=production
+  #     - DATABASE_URL=postgresql://suitesync:suitesync@db:5432/suitesync
+  #     - REDIS_URL=redis://redis:6379/0
+  #   env_file:
+  #     - .env
+  #   volumes:
+  #     - ./repos:/app/repos
+  #     - ./logs:/app/logs
+  #   depends_on:
+  #     - db
+  #     - redis
+  #   restart: unless-stopped
+
+volumes:
+  postgres_data:
+
