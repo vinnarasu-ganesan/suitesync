@@ -12,10 +12,10 @@
 </div>
 
 <div class="row mb-3">
-    <div class="col-md-6">
+    <div class="col-md-4">
         <input type="text" class="form-control" id="search-input" placeholder="Search tests...">
     </div>
-    <div class="col-md-3">
+    <div class="col-md-2">
         <select class="form-select" id="status-filter">
             <option value="active">Active</option>
             <option value="archived">Archived</option>
@@ -27,7 +27,13 @@
             <option value="">All Tests</option>
             <option value="with">With TestRail ID</option>
             <option value="without">Without TestRail ID</option>
+            <option value="deleted">Deleted TestRail ID</option>
         </select>
+    </div>
+    <div class="col-md-3">
+        <button class="btn btn-primary w-100" id="validate-btn">
+            <i class="bi bi-check-circle"></i> Validate TestRail IDs
+        </button>
     </div>
 </div>
 
@@ -39,9 +45,8 @@
                     <table class="table table-hover">
                         <thead>
                             <tr>
-                                <!-- Re-added the Test ID and TestRail ID columns -->
-                                <th>Test ID</th>
                                 <th>TestRail ID</th>
+                                <th>TestRail Status</th>
                                 <th>Test Name</th>
                                 <th>File</th>
                                 <th>Class</th>
@@ -51,7 +56,6 @@
                         </thead>
                         <tbody id="tests-tbody">
                             <tr>
-                                <!-- Adjusted colspan back to 7 after re-adding Test ID and TestRail ID columns -->
                                 <td colspan="7" class="text-center">
                                     <div class="spinner-border text-primary" role="status">
                                         <span class="visually-hidden">Loading...</span>

@@ -16,6 +16,8 @@ class Test(db.Model):
     test_class = db.Column(db.String(255), nullable=True)
     description = db.Column(db.Text, nullable=True)
     testrail_case_id = db.Column(db.String(50), nullable=True, index=True)
+    testrail_status = db.Column(db.String(50), default='unknown')  # valid, deleted, unknown
+    testrail_validated_at = db.Column(db.DateTime, nullable=True)
     status = db.Column(db.String(50), default='active')  # active, archived, deleted
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -35,6 +37,8 @@ class Test(db.Model):
             'test_class': self.test_class,
             'description': self.description,
             'testrail_case_id': self.testrail_case_id,
+            'testrail_status': self.testrail_status,
+            'testrail_validated_at': self.testrail_validated_at.isoformat() if self.testrail_validated_at else None,
             'status': self.status,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None

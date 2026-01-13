@@ -6,6 +6,15 @@ let currentSearch = '';
 let currentTestrailFilter = '';
 
 document.addEventListener('DOMContentLoaded', () => {
+    // Check for URL parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    const testrailFilterParam = urlParams.get('testrail_filter');
+
+    if (testrailFilterParam) {
+        currentTestrailFilter = testrailFilterParam;
+        document.getElementById('testrail-filter').value = testrailFilterParam;
+    }
+
     loadTests();
 
     // Set up event listeners
@@ -25,6 +34,11 @@ document.addEventListener('DOMContentLoaded', () => {
         currentTestrailFilter = e.target.value;
         currentPage = 1;
         loadTests();
+    });
+
+    // Validate button event listener
+    document.getElementById('validate-btn').addEventListener('click', async () => {
+        await validateTestRailIds();
     });
 });
 
@@ -51,6 +65,8 @@ async function loadTests() {
             filteredTests = data.tests.filter(t => t.testrail_case_id);
         } else if (currentTestrailFilter === 'without') {
             filteredTests = data.tests.filter(t => !t.testrail_case_id);
+        } else if (currentTestrailFilter === 'deleted') {
+            filteredTests = data.tests.filter(t => t.testrail_status === 'deleted');
         }
 
         if (filteredTests.length === 0) {
@@ -60,8 +76,8 @@ async function loadTests() {
 
         tbody.innerHTML = filteredTests.map(test => `
             <tr>
-                <td><small><code>${test.test_id}</code></small></td>
                 <td>${formatTestRailIds(test.testrail_case_id)}</td>
+                <td>${getTestRailStatusBadge(test.testrail_status, test.testrail_case_id)}</td>
                 <td><strong>${test.test_name}</strong></td>
                 <td><small class="text-muted">${test.test_file}</small></td>
                 <td>${test.test_class || '<span class="text-muted">N/A</span>'}</td>
@@ -138,5 +154,76 @@ function debounce(func, wait) {
         clearTimeout(timeout);
         timeout = setTimeout(later, wait);
     };
+}
+
+function getTestRailStatusBadge(status, testrailCaseId) {
+    if (!testrailCaseId) {
+        return '<span class="badge bg-secondary">No TestRail ID</span>';
+    }
+
+    switch(status) {
+        case 'valid':
+            return '<span class="badge bg-success"><i class="bi bi-check-circle"></i> Valid</span>';
+        case 'deleted':
+            return '<span class="badge bg-danger"><i class="bi bi-exclamation-triangle"></i> Deleted</span>';
+        case 'unknown':
+        default:
+            return '<span class="badge bg-warning"><i class="bi bi-question-circle"></i> Not Validated</span>';
+    }
+}
+
+async function validateTestRailIds() {
+    console.log('Validate TestRail IDs button clicked');
+    const btn = document.getElementById('validate-btn');
+
+    if (!btn) {
+        console.error('Validate button not found!');
+        return;
+    }
+
+    const originalText = btn.innerHTML;
+
+    try {
+        // Disable button and show loading
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Validating...';
+
+        console.log('Sending validation request to /api/tests/validate-testrail');
+
+        const response = await fetch('/api/tests/validate-testrail', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+
+        console.log('Response status:', response.status);
+
+        const data = await response.json();
+        console.log('Response data:', data);
+
+        if (data.status === 'success') {
+            // Show success message
+            const message = `Validation complete!\n\nValidated: ${data.validated}\nValid: ${data.valid}\nDeleted TestRail IDs: ${data.deleted}`;
+            console.log('Validation successful:', message);
+            alert(message);
+
+            // Reload tests to show updated statuses
+            console.log('Reloading tests...');
+            await loadTests();
+        } else {
+            const errorMsg = `Error: ${data.message || 'Failed to validate TestRail IDs'}`;
+            console.error('Validation failed:', errorMsg);
+            alert(errorMsg);
+        }
+    } catch (error) {
+        console.error('Validation error:', error);
+        alert('Error validating TestRail IDs. Please check the console for details.');
+    } finally {
+        // Re-enable button
+        console.log('Re-enabling button');
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+    }
 }
 

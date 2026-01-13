@@ -17,6 +17,7 @@ async function loadDashboardData() {
         document.getElementById('tests-with-testrail').textContent = stats.tests_with_testrail;
         document.getElementById('tests-without-testrail').textContent = stats.tests_without_testrail;
         document.getElementById('archived-tests').textContent = stats.archived_tests;
+        document.getElementById('tests-deleted-testrail').textContent = stats.tests_with_deleted_testrail || 0;
     } catch (error) {
         console.error('Error loading dashboard data:', error);
     }

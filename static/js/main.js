@@ -39,15 +39,34 @@ function getStatusBadge(status) {
 }
 
 // API call helper
-async function apiCall(endpoint) {
+async function apiCall(endpoint, options = {}) {
     try {
-        const response = await fetch(`/api${endpoint}`);
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+        const method = options.method || 'GET';
+        console.log(`[API] Calling: ${method} /api${endpoint}`);
+
+        const fetchOptions = {
+            method: method,
+            headers: {
+                'Content-Type': 'application/json',
+                ...options.headers
+            }
+        };
+
+        if (options.body) {
+            fetchOptions.body = JSON.stringify(options.body);
         }
-        return await response.json();
+
+        const response = await fetch(`/api${endpoint}`, fetchOptions);
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`[API] Error response:`, errorText);
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        const data = await response.json();
+        console.log(`[API] Success: /api${endpoint}`, data);
+        return data;
     } catch (error) {
-        console.error('API call failed:', error);
+        console.error(`[API] Failed: /api${endpoint}`, error);
         throw error;
     }
 }
@@ -98,7 +117,7 @@ async function triggerSync() {
         }
     } catch (error) {
         console.error('Sync error:', error);
-        showToast('Sync Error', 'Failed to start synchronization', 'danger');
+        showToast('Sync Error', `Failed to start synchronization: ${error.message}`, 'danger');
     }
 }
 

@@ -33,6 +33,30 @@ def testrail():
     return render_template('testrail.html')
 
 
+@web_bp.route('/test-validation')
+def test_validation():
+    """Test validation debug page."""
+    return render_template('test_validation.html')
+
+
+@web_bp.route('/test-automated-badge')
+def test_automated_badge():
+    """Test automated badge function."""
+    return render_template('test_automated_badge.html')
+
+
+@web_bp.route('/test-testrail-performance')
+def test_testrail_performance():
+    """Test TestRail page performance."""
+    return render_template('test_testrail_performance.html')
+
+
+@web_bp.route('/test-testrail-debug')
+def test_testrail_debug():
+    """Test TestRail API debug."""
+    return render_template('test_testrail_debug.html')
+
+
 @web_bp.route('/diagnostic')
 def diagnostic():
     """Diagnostic page to test API connectivity."""

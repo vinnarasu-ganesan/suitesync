@@ -2,6 +2,7 @@ from flask import Blueprint, jsonify, request, current_app
 from models import db, Test, TestRailCase, SyncLog
 from services.sync_service import SyncService
 import logging
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -70,84 +71,122 @@ def get_test_stats():
     archived_tests = Test.query.filter_by(status='archived').count()
     tests_with_testrail = Test.query.filter(Test.testrail_case_id.isnot(None)).count()
     tests_without_testrail = Test.query.filter(Test.testrail_case_id.is_(None)).count()
+    tests_with_deleted_testrail = Test.query.filter_by(testrail_status='deleted').count()
 
     return jsonify({
         'total_tests': total_tests,
         'active_tests': active_tests,
         'archived_tests': archived_tests,
         'tests_with_testrail': tests_with_testrail,
-        'tests_without_testrail': tests_without_testrail
+        'tests_without_testrail': tests_without_testrail,
+        'tests_with_deleted_testrail': tests_with_deleted_testrail
     })
 
 
 @api_bp.route('/testrail/cases', methods=['GET'])
 def get_testrail_cases():
     """Get all TestRail cases with filtering and sorting."""
-    page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 50, type=int)
-    sort_by = request.args.get('sort_by', 'case_id', type=str)
-    sort_order = request.args.get('sort_order', 'asc', type=str)
+    start = time.time()
+    per_page = 50  # Default value for error handling
 
-    # Filtering parameters
-    suite_id = request.args.get('suite_id', type=str)
-    section_id = request.args.get('section_id', type=str)
-    type_id = request.args.get('type_id', type=int)
-    priority_id = request.args.get('priority_id', type=int)
-    search = request.args.get('search', type=str)
+    try:
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 50, type=int)
+        sort_by = request.args.get('sort_by', 'case_id', type=str)
+        sort_order = request.args.get('sort_order', 'asc', type=str)
 
-    # Build query with filters
-    query = TestRailCase.query
+        # Filtering parameters
+        suite_id = request.args.get('suite_id', type=str)
+        section_id = request.args.get('section_id', type=str)
+        type_id = request.args.get('type_id', type=int)
+        priority_id = request.args.get('priority_id', type=int)
+        search = request.args.get('search', type=str)
 
-    # Apply filters
-    if suite_id:
-        query = query.filter(TestRailCase.suite_id == suite_id)
-    if section_id:
-        query = query.filter(TestRailCase.section_id == section_id)
-    if type_id:
-        query = query.filter(TestRailCase.type_id == type_id)
-    if priority_id:
-        query = query.filter(TestRailCase.priority_id == priority_id)
-    if search:
-        query = query.filter(
-            db.or_(
-                TestRailCase.case_id.contains(search),
-                TestRailCase.title.contains(search)
+        # Build query with filters
+        query = TestRailCase.query
+
+        # Apply filters
+        if suite_id:
+            query = query.filter(TestRailCase.suite_id == suite_id)
+        if section_id:
+            query = query.filter(TestRailCase.section_id == section_id)
+        if type_id:
+            query = query.filter(TestRailCase.type_id == type_id)
+        if priority_id:
+            query = query.filter(TestRailCase.priority_id == priority_id)
+        if search:
+            query = query.filter(
+                db.or_(
+                    TestRailCase.case_id.contains(search),
+                    TestRailCase.title.contains(search)
+                )
             )
+
+        # Apply sorting
+        sort_column = TestRailCase.case_id  # default
+        if sort_by == 'case_id':
+            sort_column = TestRailCase.case_id
+        elif sort_by == 'title':
+            sort_column = TestRailCase.title
+        elif sort_by == 'suite_id':
+            sort_column = TestRailCase.suite_id
+        elif sort_by == 'section_id':
+            sort_column = TestRailCase.section_id
+        elif sort_by == 'type_id':
+            sort_column = TestRailCase.type_id
+        elif sort_by == 'priority_id':
+            sort_column = TestRailCase.priority_id
+        elif sort_by == 'updated_at':
+            sort_column = TestRailCase.updated_at
+
+        if sort_order == 'desc':
+            query = query.order_by(sort_column.desc())
+        else:
+            query = query.order_by(sort_column.asc())
+
+        pagination = query.paginate(
+            page=page, per_page=per_page, error_out=False
         )
 
-    # Apply sorting
-    sort_column = TestRailCase.case_id  # default
-    if sort_by == 'case_id':
-        sort_column = TestRailCase.case_id
-    elif sort_by == 'title':
-        sort_column = TestRailCase.title
-    elif sort_by == 'suite_id':
-        sort_column = TestRailCase.suite_id
-    elif sort_by == 'section_id':
-        sort_column = TestRailCase.section_id
-    elif sort_by == 'type_id':
-        sort_column = TestRailCase.type_id
-    elif sort_by == 'priority_id':
-        sort_column = TestRailCase.priority_id
-    elif sort_by == 'updated_at':
-        sort_column = TestRailCase.updated_at
+        # Optimize: Create lightweight dict without custom_fields to reduce payload size
+        cases_data = []
+        for case in pagination.items:
+            cases_data.append({
+                'id': case.id,
+                'case_id': case.case_id,
+                'title': case.title,
+                'section_id': case.section_id,
+                'suite_id': case.suite_id,
+                'type_id': case.type_id,
+                'priority_id': case.priority_id,
+                # Exclude custom_fields to reduce data transfer
+                'created_at': case.created_at.isoformat() if case.created_at else None,
+                'updated_at': case.updated_at.isoformat() if case.updated_at else None
+            })
 
-    if sort_order == 'desc':
-        query = query.order_by(sort_column.desc())
-    else:
-        query = query.order_by(sort_column.asc())
+        elapsed = (time.time() - start) * 1000
+        logger.info(f"[API] /testrail/cases completed in {elapsed:.2f}ms - returned {len(cases_data)} cases")
 
-    pagination = query.paginate(
-        page=page, per_page=per_page, error_out=False
-    )
+        return jsonify({
+            'cases': cases_data,
+            'total': pagination.total,
+            'pages': pagination.pages,
+            'current_page': page,
+            'per_page': per_page
+        })
 
-    return jsonify({
-        'cases': [case.to_dict() for case in pagination.items],
-        'total': pagination.total,
-        'pages': pagination.pages,
-        'current_page': page,
-        'per_page': per_page
-    })
+    except Exception as e:
+        logger.error(f"[API] Error in /testrail/cases: {e}", exc_info=True)
+        return jsonify({
+            'status': 'error',
+            'message': str(e),
+            'cases': [],
+            'total': 0,
+            'pages': 0,
+            'current_page': 1,
+            'per_page': per_page
+        }), 500
+
 
 
 @api_bp.route('/testrail/stats', methods=['GET'])
@@ -226,37 +265,44 @@ def get_testrail_filters():
 
 @api_bp.route('/testrail/names', methods=['GET'])
 def get_testrail_names():
-    """Get section and suite names from TestRail API."""
-    from services.testrail_service import TestRailService
-
+    """Get section and suite names from database (much faster than API)."""
     try:
-        # Initialize TestRail service
-        tr_service = TestRailService(
-            current_app.config.get('TESTRAIL_URL'),
-            current_app.config.get('TESTRAIL_EMAIL'),
-            current_app.config.get('TESTRAIL_API_KEY'),
-            current_app.config.get('TESTRAIL_SUITE_ID')
-        )
+        # Get unique sections from database with their names
+        # This is MUCH faster than calling TestRail API
+        from sqlalchemy import func, distinct
 
-        # Get sections
-        sections_response = tr_service.get_sections()
+        sections_query = db.session.query(
+            TestRailCase.section_id,
+            func.min(TestRailCase.title).label('sample_title')
+        ).filter(
+            TestRailCase.section_id.isnot(None)
+        ).group_by(TestRailCase.section_id).all()
+
         sections_map = {}
-        if sections_response:
-            for section in sections_response:
-                sections_map[str(section.get('id'))] = section.get('name', f"Section {section.get('id')}")
+        for section_id, _ in sections_query:
+            # Use section ID as name for now (fast)
+            sections_map[str(section_id)] = f"Section {section_id}"
 
-        # Get suite info
-        suite = tr_service.get_suite()
+        # Get unique suites from database
+        suites_query = db.session.query(
+            TestRailCase.suite_id
+        ).filter(
+            TestRailCase.suite_id.isnot(None)
+        ).distinct().all()
+
         suites_map = {}
-        if suite:
-            suites_map[str(suite.get('id'))] = suite.get('name', f"Suite {suite.get('id')}")
+        for suite_id, in suites_query:
+            # Use suite ID as name for now (fast)
+            suites_map[str(suite_id)] = f"Suite {suite_id}"
+
+        logger.info(f"Loaded {len(sections_map)} sections and {len(suites_map)} suites from database")
 
         return jsonify({
             'sections': sections_map,
             'suites': suites_map
         })
     except Exception as e:
-        logger.error(f"Error fetching TestRail names: {e}")
+        logger.error(f"Error fetching TestRail names from database: {e}")
         return jsonify({
             'sections': {},
             'suites': {}
@@ -267,15 +313,18 @@ def get_testrail_names():
 def trigger_sync():
     """Trigger a manual synchronization."""
     try:
+        logger.info("Manual sync triggered via API")
         sync_service = SyncService(current_app.config)
         sync_log = sync_service.sync_tests(sync_type='manual')
 
+        logger.info(f"Manual sync completed successfully: {sync_log.id}")
         return jsonify({
             'status': 'success',
+            'message': f'Sync completed: {sync_log.tests_synced} tests synced',
             'sync_log': sync_log.to_dict()
         })
     except Exception as e:
-        logger.error(f"Error triggering sync: {e}")
+        logger.error(f"Error triggering sync: {e}", exc_info=True)
         return jsonify({
             'status': 'error',
             'message': str(e)
@@ -347,4 +396,84 @@ def github_webhook():
     except Exception as e:
         logger.error(f"Webhook error: {e}")
         return jsonify({'error': str(e)}), 500
+
+
+@api_bp.route('/tests/validate-testrail', methods=['POST'])
+def validate_testrail_ids():
+    """Validate TestRail IDs for all tests with TestRail case IDs."""
+    from services.testrail_service import TestRailService
+    from datetime import datetime
+
+    try:
+        # Initialize TestRail service
+        tr_service = TestRailService(
+            current_app.config.get('TESTRAIL_URL'),
+            current_app.config.get('TESTRAIL_EMAIL'),
+            current_app.config.get('TESTRAIL_API_KEY'),
+            current_app.config.get('TESTRAIL_SUITE_ID')
+        )
+
+        # Get all TestRail case IDs from database
+        testrail_cases = TestRailCase.query.all()
+        valid_case_ids = set()
+        for case in testrail_cases:
+            # Store both with and without 'C' prefix
+            case_id_str = str(case.case_id).upper()
+            valid_case_ids.add(case_id_str)
+            valid_case_ids.add(case_id_str.replace('C', ''))
+
+        # Get all tests with TestRail IDs
+        tests = Test.query.filter(Test.testrail_case_id.isnot(None)).all()
+
+        validated_count = 0
+        deleted_count = 0
+        valid_count = 0
+
+        for test in tests:
+            if not test.testrail_case_id:
+                continue
+
+            # Parse multiple TestRail IDs (comma-separated)
+            testrail_ids = [tid.strip() for tid in test.testrail_case_id.split(',')]
+            all_valid = True
+
+            for tid in testrail_ids:
+                tid_upper = tid.upper()
+                # Check if the ID exists in our valid set
+                if tid_upper not in valid_case_ids and tid_upper.replace('C', '') not in valid_case_ids:
+                    all_valid = False
+                    break
+
+            # Update test status
+            if all_valid:
+                test.testrail_status = 'valid'
+                valid_count += 1
+            else:
+                test.testrail_status = 'deleted'
+                deleted_count += 1
+
+            test.testrail_validated_at = datetime.utcnow()
+            validated_count += 1
+
+        # Commit changes
+        db.session.commit()
+
+        logger.info(f"Validated {validated_count} tests: {valid_count} valid, {deleted_count} with deleted TestRail IDs")
+
+        return jsonify({
+            'status': 'success',
+            'validated': validated_count,
+            'valid': valid_count,
+            'deleted': deleted_count
+        })
+
+    except Exception as e:
+        logger.error(f"Error validating TestRail IDs: {e}")
+        db.session.rollback()
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+
 

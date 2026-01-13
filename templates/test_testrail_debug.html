@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>TestRail Debug - Individual API Timing</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { padding: 20px; }
+        .result { margin: 10px 0; padding: 10px; border: 1px solid #ccc; }
+        .fast { background-color: #d4edda; }
+        .slow { background-color: #f8d7da; }
+        .medium { background-color: #fff3cd; }
+        pre { max-height: 200px; overflow-y: auto; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>TestRail API Debug - Individual Timing</h1>
+        <p>Testing each API call separately to identify the slow one.</p>
+
+        <button class="btn btn-primary" onclick="testAll()">Test All APIs</button>
+        <button class="btn btn-secondary" onclick="clearResults()">Clear</button>
+
+        <div id="results" class="mt-4"></div>
+    </div>
+
+    <script>
+        function log(message, className = '', data = null) {
+            const resultsDiv = document.getElementById('results');
+            const resultEntry = document.createElement('div');
+            resultEntry.className = `result ${className}`;
+
+            let content = message;
+            if (data) {
+                content += '\n\n' + JSON.stringify(data, null, 2);
+            }
+
+            resultEntry.innerHTML = `<pre>${content}</pre>`;
+            resultsDiv.appendChild(resultEntry);
+            console.log(message, data);
+        }
+
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+        }
+
+        async function testAPI(name, url) {
+            log(`\n🔍 Testing: ${name}\n   URL: ${url}`);
+
+            const start = performance.now();
+            try {
+                const response = await fetch(url);
+                const end = performance.now();
+                const time = end - start;
+
+                const data = await response.json();
+                const parseEnd = performance.now();
+                const parseTime = parseEnd - end;
+
+                const className = time < 500 ? 'fast' : time < 2000 ? 'medium' : 'slow';
+                const icon = time < 500 ? '✅' : time < 2000 ? '⚠️' : '❌';
+
+                log(
+                    `${icon} ${name}\n` +
+                    `   Response Time: ${time.toFixed(2)}ms\n` +
+                    `   Parse Time: ${parseTime.toFixed(2)}ms\n` +
+                    `   Total: ${(time + parseTime).toFixed(2)}ms\n` +
+                    `   Status: ${response.status}\n` +
+                    `   Data Size: ${JSON.stringify(data).length} bytes`,
+                    className
+                );
+
+                return { name, time, data, success: true };
+            } catch (error) {
+                log(`❌ ${name} - ERROR: ${error.message}`, 'slow');
+                return { name, time: 0, error: error.message, success: false };
+            }
+        }
+
+        async function testAll() {
+            clearResults();
+            log('=== Starting API Tests ===\n');
+
+            const tests = [
+                { name: 'Stats API', url: '/api/testrail/stats' },
+                { name: 'Filters API', url: '/api/testrail/filters' },
+                { name: 'Cases API (page 1)', url: '/api/testrail/cases?page=1&per_page=20&sort_by=case_id&sort_order=asc' }
+            ];
+
+            const results = [];
+
+            for (const test of tests) {
+                const result = await testAPI(test.name, test.url);
+                results.push(result);
+                await new Promise(resolve => setTimeout(resolve, 100)); // Small delay between tests
+            }
+
+            // Summary
+            log('\n=== Summary ===');
+            const totalTime = results.reduce((sum, r) => sum + r.time, 0);
+            log(`Total Time: ${totalTime.toFixed(2)}ms`);
+
+            const slowest = results.sort((a, b) => b.time - a.time)[0];
+            log(`Slowest: ${slowest.name} (${slowest.time.toFixed(2)}ms)`,
+                slowest.time > 2000 ? 'slow' : slowest.time > 500 ? 'medium' : 'fast');
+
+            log('\n=== Performance Guide ===\n' +
+                '✅ Fast: < 500ms\n' +
+                '⚠️  Medium: 500-2000ms\n' +
+                '❌ Slow: > 2000ms\n');
+        }
+    </script>
+</body>
+</html>
+

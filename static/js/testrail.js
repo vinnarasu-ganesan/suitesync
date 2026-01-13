@@ -10,51 +10,28 @@ let currentFilters = {
     priority_id: '',
     search: ''
 };
-let sectionsMap = {};  // Maps section IDs to names
-let suitesMap = {};    // Maps suite IDs to names
+// Removed sectionsMap and suitesMap - not needed anymore
 
 document.addEventListener('DOMContentLoaded', async () => {
     loadTestrailStats();
     setupSorting();
     setupFilters();
     setupSearch();
-    await loadTestrailNames();  // Wait for names to load first
-    await loadFilterOptions();   // Then load filter options (which use the names)
-    loadTestrailCases();         // Finally load the cases
+    // Removed loadTestrailNames() - not needed
+    await loadFilterOptions();   // Load filter options
+    loadTestrailCases();         // Load the cases
 });
 
-async function loadTestrailNames() {
-    try {
-        console.log('Loading TestRail names...');
-        const data = await apiCall('/testrail/names');
-        sectionsMap = data.sections || {};
-        suitesMap = data.suites || {};
-        console.log(`✓ Loaded ${Object.keys(sectionsMap).length} sections and ${Object.keys(suitesMap).length} suites`);
-        console.log('Sample sections:', Object.entries(sectionsMap).slice(0, 3));
-        console.log('Suites:', suitesMap);
-    } catch (error) {
-        console.error('❌ Error loading TestRail names:', error);
-    }
-}
+// Removed loadTestrailNames() function - no longer needed
 
 function getSectionName(sectionId) {
     if (!sectionId) return 'N/A';
-    const name = sectionsMap[sectionId];
-    if (!name) {
-        console.warn(`Section name not found for ID: ${sectionId}`);
-        return `Section ${sectionId}`;
-    }
-    return name;
+    return sectionId;  // Just return the ID directly
 }
 
 function getSuiteName(suiteId) {
     if (!suiteId) return 'N/A';
-    const name = suitesMap[suiteId];
-    if (!name) {
-        console.warn(`Suite name not found for ID: ${suiteId}`);
-        return `Suite ${suiteId}`;
-    }
-    return name;
+    return suiteId;  // Just return the ID directly
 }
 
 async function loadFilterOptions() {
@@ -66,9 +43,7 @@ async function loadFilterOptions() {
         data.suites.forEach(suite => {
             const option = document.createElement('option');
             option.value = suite.value;
-            // Use name from suitesMap if available
-            const suiteName = suitesMap[suite.value] || suite.label;
-            option.textContent = suiteName;
+            option.textContent = suite.label;  // Just use the label from API
             suiteFilter.appendChild(option);
         });
 
@@ -77,10 +52,7 @@ async function loadFilterOptions() {
         data.sections.forEach(section => {
             const option = document.createElement('option');
             option.value = section.value;
-            // Use name from sectionsMap if available, include case count
-            const sectionName = sectionsMap[section.value] || `Section ${section.value}`;
-            const caseCount = section.label.match(/\((\d+) cases\)/)?.[1] || '';
-            option.textContent = caseCount ? `${sectionName} (${caseCount} cases)` : sectionName;
+            option.textContent = section.label;  // Just use the label from API
             sectionFilter.appendChild(option);
         });
 
@@ -159,10 +131,18 @@ async function loadTestrailStats() {
         }
     } catch (error) {
         console.error('Error loading TestRail stats:', error);
+        // Set default values on error
+        document.getElementById('total-cases').textContent = '0';
+        document.getElementById('unique-sections').textContent = '0';
+        document.getElementById('unique-suites').textContent = '0';
+        document.getElementById('last-sync').textContent = 'Error';
     }
 }
 
 async function loadTestrailCases() {
+    console.time('[TestRail] Total load time');
+    console.time('[TestRail] API call');
+
     const tbody = document.getElementById('testrail-cases-tbody');
     tbody.innerHTML = '<tr><td colspan="7" class="text-center"><div class="spinner-border text-primary"></div></td></tr>';
 
@@ -177,13 +157,17 @@ async function loadTestrailCases() {
         if (currentFilters.search) params += `&search=${encodeURIComponent(currentFilters.search)}`;
 
         const data = await apiCall(`/testrail/cases?${params}`);
+        console.timeEnd('[TestRail] API call');
+        console.log(`[TestRail] Received ${data.cases.length} cases`);
 
         if (data.cases.length === 0) {
             tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No TestRail cases found matching the filters.</td></tr>';
             document.getElementById('pagination').innerHTML = '';
+            console.timeEnd('[TestRail] Total load time');
             return;
         }
 
+        console.time('[TestRail] HTML generation');
         tbody.innerHTML = data.cases.map(testCase => `
             <tr>
                 <td><span class="badge bg-info">${testCase.case_id}</span></td>
@@ -195,14 +179,24 @@ async function loadTestrailCases() {
                 <td><small>${formatDate(testCase.updated_at)}</small></td>
             </tr>
         `).join('');
+        console.timeEnd('[TestRail] HTML generation');
 
         // Update pagination
         updatePagination(data.pages, currentPage);
 
         // Update sort indicators
         updateSortIndicators();
+
+        console.timeEnd('[TestRail] Total load time');
     } catch (error) {
-        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-danger">Error loading TestRail cases</td></tr>';
+        console.error('[TestRail] Error:', error);
+        tbody.innerHTML = `
+            <tr><td colspan="7" class="text-center text-danger">
+                <i class="bi bi-exclamation-triangle"></i> Error loading TestRail cases: ${error.message}
+                <br><small>Check the browser console for more details.</small>
+            </td></tr>
+        `;
+        console.timeEnd('[TestRail] Total load time');
     }
 }
 
@@ -256,6 +250,7 @@ function getPriorityBadge(priorityId) {
 
     return priorities[priorityId] || `<span class="badge bg-secondary">${priorityId}</span>`;
 }
+
 
 function updatePagination(totalPages, currentPage) {
     const pagination = document.getElementById('pagination');

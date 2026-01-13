@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Validate Button</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        #output { margin-top: 20px; border: 1px solid #ccc; padding: 10px; }
+        .log { margin: 5px 0; }
+        .success { color: green; }
+        .error { color: red; }
+        .info { color: blue; }
+    </style>
+</head>
+<body>
+    <h1>TestRail Validation - Debug Page</h1>
+
+    <button id="validate-btn" onclick="testValidate()">
+        Validate TestRail IDs (Test)
+    </button>
+
+    <div id="output">
+        <h3>Console Output:</h3>
+        <div id="logs"></div>
+    </div>
+
+    <script>
+        function log(message, type = 'info') {
+            const logsDiv = document.getElementById('logs');
+            const logEntry = document.createElement('div');
+            logEntry.className = `log ${type}`;
+            logEntry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logsDiv.appendChild(logEntry);
+            console.log(message);
+        }
+
+        async function testValidate() {
+            log('Button clicked!', 'info');
+            const btn = document.getElementById('validate-btn');
+            const originalText = btn.innerHTML;
+
+            try {
+                btn.disabled = true;
+                btn.innerHTML = 'Validating...';
+                log('Sending POST request to /api/tests/validate-testrail', 'info');
+
+                const response = await fetch('/api/tests/validate-testrail', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                log(`Response status: ${response.status}`, response.ok ? 'success' : 'error');
+
+                const data = await response.json();
+                log(`Response data: ${JSON.stringify(data, null, 2)}`, 'info');
+
+                if (data.status === 'success') {
+                    log(`✓ Validation successful!`, 'success');
+                    log(`  - Validated: ${data.validated}`, 'success');
+                    log(`  - Valid: ${data.valid}`, 'success');
+                    log(`  - Deleted: ${data.deleted}`, 'success');
+                    alert(`Validation complete!\n\nValidated: ${data.validated}\nValid: ${data.valid}\nDeleted: ${data.deleted}`);
+                } else {
+                    log(`✗ Validation failed: ${data.message}`, 'error');
+                    alert(`Error: ${data.message || 'Failed to validate TestRail IDs'}`);
+                }
+            } catch (error) {
+                log(`✗ Exception: ${error.message}`, 'error');
+                log(`Stack: ${error.stack}`, 'error');
+                alert('Error validating TestRail IDs. Check the console for details.');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+                log('Button re-enabled', 'info');
+            }
+        }
+
+        log('Debug page loaded. Click the button to test validation.', 'info');
+    </script>
+</body>
+</html>
+
