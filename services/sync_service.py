@@ -129,6 +129,23 @@ class SyncService:
     def _sync_with_testrail(self):
         """Sync test information with TestRail."""
         try:
+            # Get suite information first
+            logger.info("Fetching suite information...")
+            suite_info = self.testrail_service.get_suite()
+            suite_name = suite_info.get('name', f'Suite {self.testrail_service.suite_id}') if suite_info else f'Suite {self.testrail_service.suite_id}'
+            logger.info(f"Suite name: {suite_name}")
+
+            # Get all sections and create a mapping of section_id -> section_name
+            logger.info("Fetching sections...")
+            sections = self.testrail_service.get_sections()
+            sections_map = {}
+            if sections:
+                for section in sections:
+                    section_id = str(section.get('id', ''))
+                    section_name = section.get('name', f'Section {section_id}')
+                    sections_map[section_id] = section_name
+            logger.info(f"Found {len(sections_map)} sections")
+
             # Get all TestRail cases
             response = self.testrail_service.get_cases()
             if not response:
@@ -149,12 +166,17 @@ class SyncService:
             # Update or create TestRail cases in database
             for case in cases:
                 case_id = f"C{case['id']}"
+                section_id = str(case.get('section_id', ''))
+                section_name = sections_map.get(section_id, f'Section {section_id}')
+
                 testrail_case = TestRailCase.query.filter_by(case_id=case_id).first()
 
                 if testrail_case:
                     testrail_case.title = case['title']
-                    testrail_case.section_id = str(case.get('section_id', ''))
+                    testrail_case.section_id = section_id
+                    testrail_case.section_name = section_name
                     testrail_case.suite_id = str(case.get('suite_id', ''))
+                    testrail_case.suite_name = suite_name
                     testrail_case.type_id = case.get('type_id')
                     testrail_case.priority_id = case.get('priority_id')
                     testrail_case.custom_fields = case.get('custom_fields', {})
@@ -163,8 +185,10 @@ class SyncService:
                     testrail_case = TestRailCase(
                         case_id=case_id,
                         title=case['title'],
-                        section_id=str(case.get('section_id', '')),
+                        section_id=section_id,
+                        section_name=section_name,
                         suite_id=str(case.get('suite_id', '')),
+                        suite_name=suite_name,
                         type_id=case.get('type_id'),
                         priority_id=case.get('priority_id'),
                         custom_fields=case.get('custom_fields', {})

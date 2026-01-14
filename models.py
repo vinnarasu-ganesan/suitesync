@@ -56,7 +56,9 @@ class TestRailCase(db.Model):
     case_id = db.Column(db.String(50), unique=True, nullable=False, index=True)
     title = db.Column(db.String(500), nullable=False)
     section_id = db.Column(db.String(50), nullable=True)
+    section_name = db.Column(db.String(500), nullable=True)
     suite_id = db.Column(db.String(50), nullable=True)
+    suite_name = db.Column(db.String(500), nullable=True)
     type_id = db.Column(db.Integer, nullable=True)
     priority_id = db.Column(db.Integer, nullable=True)
     custom_fields = db.Column(db.JSON, nullable=True)
@@ -72,7 +74,9 @@ class TestRailCase(db.Model):
             'case_id': self.case_id,
             'title': self.title,
             'section_id': self.section_id,
+            'section_name': self.section_name,
             'suite_id': self.suite_id,
+            'suite_name': self.suite_name,
             'type_id': self.type_id,
             'priority_id': self.priority_id,
             'custom_fields': self.custom_fields,

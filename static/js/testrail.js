@@ -10,29 +10,15 @@ let currentFilters = {
     priority_id: '',
     search: ''
 };
-// Removed sectionsMap and suitesMap - not needed anymore
 
 document.addEventListener('DOMContentLoaded', async () => {
     loadTestrailStats();
     setupSorting();
     setupFilters();
     setupSearch();
-    // Removed loadTestrailNames() - not needed
     await loadFilterOptions();   // Load filter options
     loadTestrailCases();         // Load the cases
 });
-
-// Removed loadTestrailNames() function - no longer needed
-
-function getSectionName(sectionId) {
-    if (!sectionId) return 'N/A';
-    return sectionId;  // Just return the ID directly
-}
-
-function getSuiteName(suiteId) {
-    if (!suiteId) return 'N/A';
-    return suiteId;  // Just return the ID directly
-}
 
 async function loadFilterOptions() {
     try {
@@ -43,7 +29,7 @@ async function loadFilterOptions() {
         data.suites.forEach(suite => {
             const option = document.createElement('option');
             option.value = suite.value;
-            option.textContent = suite.label;  // Just use the label from API
+            option.textContent = suite.label;
             suiteFilter.appendChild(option);
         });
 
@@ -52,7 +38,7 @@ async function loadFilterOptions() {
         data.sections.forEach(section => {
             const option = document.createElement('option');
             option.value = section.value;
-            option.textContent = section.label;  // Just use the label from API
+            option.textContent = section.label;
             sectionFilter.appendChild(option);
         });
 
@@ -172,8 +158,8 @@ async function loadTestrailCases() {
             <tr>
                 <td><span class="badge bg-info">${testCase.case_id}</span></td>
                 <td>${testCase.title}</td>
-                <td>${getSuiteName(testCase.suite_id)}</td>
-                <td>${getSectionName(testCase.section_id)}</td>
+                <td>${testCase.suite_name || testCase.suite_id || 'N/A'}</td>
+                <td>${testCase.section_name || testCase.section_id || 'N/A'}</td>
                 <td>${testCase.type_id || 'N/A'}</td>
                 <td>${getPriorityBadge(testCase.priority_id)}</td>
                 <td><small>${formatDate(testCase.updated_at)}</small></td>

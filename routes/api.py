@@ -188,7 +188,9 @@ def get_testrail_cases():
                 'case_id': case.case_id,
                 'title': case.title,
                 'section_id': case.section_id,
+                'section_name': case.section_name,
                 'suite_id': case.suite_id,
+                'suite_name': case.suite_name,
                 'type_id': case.type_id,
                 'priority_id': case.priority_id,
                 # Exclude custom_fields to reduce data transfer
@@ -264,20 +266,23 @@ def get_testrail_filters():
     """Get unique values for TestRail filters."""
     from sqlalchemy import func
 
-    # Get unique suite IDs
+    # Get unique suite IDs with their names
     suites = db.session.query(
-        TestRailCase.suite_id
+        TestRailCase.suite_id,
+        TestRailCase.suite_name
     ).distinct().filter(TestRailCase.suite_id.isnot(None)).all()
-    suite_options = [{'value': s[0], 'label': f'Suite {s[0]}'} for s in suites]
+    suite_options = [{'value': s[0], 'label': s[1] if s[1] else f'Suite {s[0]}'} for s in suites]
 
-    # Get unique section IDs with counts
+    # Get unique section IDs with their names and counts
     sections = db.session.query(
         TestRailCase.section_id,
+        TestRailCase.section_name,
         func.count(TestRailCase.id)
     ).filter(TestRailCase.section_id.isnot(None)).group_by(
-        TestRailCase.section_id
-    ).order_by(TestRailCase.section_id).all()
-    section_options = [{'value': s[0], 'label': f'Section {s[0]} ({s[1]} cases)'} for s in sections]
+        TestRailCase.section_id,
+        TestRailCase.section_name
+    ).order_by(TestRailCase.section_name).all()
+    section_options = [{'value': s[0], 'label': f'{s[1] if s[1] else "Section " + s[0]} ({s[2]} cases)'} for s in sections]
 
     # Get unique type IDs
     types = db.session.query(
