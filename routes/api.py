@@ -83,6 +83,38 @@ def get_test_stats():
     })
 
 
+@api_bp.route('/tests/markers', methods=['GET'])
+def get_all_markers():
+    """Get all unique markers from all tests."""
+    try:
+        # Query all tests and collect unique markers
+        tests = Test.query.filter(Test.markers.isnot(None)).all()
+
+        # Collect all unique markers
+        all_markers = set()
+        for test in tests:
+            if test.markers:
+                for marker in test.markers:
+                    all_markers.add(marker)
+
+        # Sort alphabetically
+        sorted_markers = sorted(list(all_markers))
+
+        logger.info(f"Found {len(sorted_markers)} unique markers")
+
+        return jsonify({
+            'markers': sorted_markers,
+            'count': len(sorted_markers)
+        })
+    except Exception as e:
+        logger.error(f"Error fetching markers: {e}", exc_info=True)
+        return jsonify({
+            'status': 'error',
+            'message': str(e),
+            'markers': []
+        }), 500
+
+
 @api_bp.route('/testrail/cases', methods=['GET'])
 def get_testrail_cases():
     """Get all TestRail cases with filtering and sorting."""

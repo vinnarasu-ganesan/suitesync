@@ -12,7 +12,7 @@
 </div>
 
 <div class="row mb-3">
-    <div class="col-md-4">
+    <div class="col-md-3">
         <input type="text" class="form-control" id="search-input" placeholder="Search tests...">
     </div>
     <div class="col-md-2">
@@ -22,7 +22,12 @@
             <option value="">All</option>
         </select>
     </div>
-    <div class="col-md-3">
+    <div class="col-md-2">
+        <select class="form-select" id="marker-filter">
+            <option value="">All Markers</option>
+        </select>
+    </div>
+    <div class="col-md-2">
         <select class="form-select" id="testrail-filter">
             <option value="">All Tests</option>
             <option value="with">With TestRail ID</option>
@@ -49,7 +54,7 @@
                                 <th>TestRail Status</th>
                                 <th>Test Name</th>
                                 <th>File</th>
-                                <th>Class</th>
+                                <th>Markers</th>
                                 <th>Status</th>
                                 <th>Actions</th>
                             </tr>

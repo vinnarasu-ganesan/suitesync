@@ -15,6 +15,7 @@ class Test(db.Model):
     test_file = db.Column(db.String(500), nullable=False)
     test_class = db.Column(db.String(255), nullable=True)
     description = db.Column(db.Text, nullable=True)
+    markers = db.Column(db.JSON, nullable=True)  # List of pytest markers (e.g., ['always', 'run', 'testrail'])
     testrail_case_id = db.Column(db.String(50), nullable=True, index=True)
     testrail_status = db.Column(db.String(50), default='unknown')  # valid, deleted, unknown
     testrail_validated_at = db.Column(db.DateTime, nullable=True)
@@ -36,6 +37,7 @@ class Test(db.Model):
             'test_file': self.test_file,
             'test_class': self.test_class,
             'description': self.description,
+            'markers': self.markers or [],
             'testrail_case_id': self.testrail_case_id,
             'testrail_status': self.testrail_status,
             'testrail_validated_at': self.testrail_validated_at.isoformat() if self.testrail_validated_at else None,

@@ -60,6 +60,33 @@ class PytestParser:
         return None
 
     @staticmethod
+    def extract_markers(decorators):
+        """
+        Extract pytest markers from decorator list.
+        Returns a list of marker names (e.g., ['always', 'run', 'testrail', 'smoke'])
+        Excludes the testrail marker as it's stored separately.
+        """
+        markers = []
+
+        for decorator in decorators:
+            try:
+                decorator_source = ast.unparse(decorator)
+
+                # Match pytest.mark.* patterns
+                # Examples: @pytest.mark.always, @pytest.mark.run(order=1), @pytest.mark.smoke
+                match = re.search(r'pytest\.mark\.(\w+)', decorator_source)
+                if match:
+                    marker_name = match.group(1)
+                    # Exclude 'testrail' as it's stored separately
+                    if marker_name != 'testrail' and marker_name not in markers:
+                        markers.append(marker_name)
+            except Exception as e:
+                logger.debug(f"Could not parse decorator: {e}")
+                continue
+
+        return markers
+
+    @staticmethod
     def parse_test_file(file_path, file_content):
         """Parse a Python test file and extract test information."""
         tests = []
@@ -75,6 +102,7 @@ class PytestParser:
                         'test_file': file_path,
                         'test_class': None,
                         'description': ast.get_docstring(node),
+                        'markers': [],
                         'testrail_case_id': None
                     }
 
@@ -91,6 +119,9 @@ class PytestParser:
                         test_info['test_id'] = f"{file_path}::{test_info['test_class']}::{test_info['test_name']}"
                     else:
                         test_info['test_id'] = f"{file_path}::{test_info['test_name']}"
+
+                    # Extract markers from decorators
+                    test_info['markers'] = PytestParser.extract_markers(node.decorator_list)
 
                     # Extract TestRail ID from decorators
                     for decorator in node.decorator_list:

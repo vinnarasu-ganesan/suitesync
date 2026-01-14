@@ -75,6 +75,7 @@ class SyncService:
                         test.test_file = test_data['test_file']
                         test.test_class = test_data['test_class']
                         test.description = test_data['description']
+                        test.markers = test_data.get('markers', [])
                         test.testrail_case_id = test_data['testrail_case_id']
                         test.updated_at = datetime.utcnow()
                     else:
@@ -85,6 +86,7 @@ class SyncService:
                             test_file=test_data['test_file'],
                             test_class=test_data['test_class'],
                             description=test_data['description'],
+                            markers=test_data.get('markers', []),
                             testrail_case_id=test_data['testrail_case_id']
                         )
                         db.session.add(test)
