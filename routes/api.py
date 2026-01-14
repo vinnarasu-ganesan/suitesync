@@ -16,6 +16,8 @@ def get_tests():
     per_page = request.args.get('per_page', 50, type=int)
     status = request.args.get('status', 'active')
     search = request.args.get('search', '')
+    marker = request.args.get('marker', '')  # Marker filter parameter
+    testrail_filter = request.args.get('testrail_filter', '')  # TestRail filter parameter
 
     query = Test.query
 
@@ -31,17 +33,48 @@ def get_tests():
             )
         )
 
-    pagination = query.order_by(Test.test_file, Test.test_name).paginate(
-        page=page, per_page=per_page, error_out=False
-    )
+    # Apply TestRail filter
+    if testrail_filter == 'with':
+        query = query.filter(Test.testrail_case_id.isnot(None))
+    elif testrail_filter == 'without':
+        query = query.filter(Test.testrail_case_id.is_(None))
+    elif testrail_filter == 'deleted':
+        query = query.filter_by(testrail_status='deleted')
 
-    return jsonify({
-        'tests': [test.to_dict() for test in pagination.items],
-        'total': pagination.total,
-        'pages': pagination.pages,
-        'current_page': page,
-        'per_page': per_page
-    })
+    # Filter by marker - get all results first if marker filter is applied
+    if marker:
+        # Get all matching tests (not paginated yet)
+        all_tests = query.order_by(Test.test_file, Test.test_name).all()
+        # Filter by marker in Python
+        filtered_tests = [test for test in all_tests if test.markers and marker in test.markers]
+
+        # Manual pagination
+        total = len(filtered_tests)
+        pages = (total + per_page - 1) // per_page  # Ceiling division
+        start_idx = (page - 1) * per_page
+        end_idx = start_idx + per_page
+        paginated_tests = filtered_tests[start_idx:end_idx]
+
+        return jsonify({
+            'tests': [test.to_dict() for test in paginated_tests],
+            'total': total,
+            'pages': pages,
+            'current_page': page,
+            'per_page': per_page
+        })
+    else:
+        # No marker filter - use normal pagination
+        pagination = query.order_by(Test.test_file, Test.test_name).paginate(
+            page=page, per_page=per_page, error_out=False
+        )
+
+        return jsonify({
+            'tests': [test.to_dict() for test in pagination.items],
+            'total': pagination.total,
+            'pages': pagination.pages,
+            'current_page': page,
+            'per_page': per_page
+        })
 
 
 @api_bp.route('/tests/<int:test_id>', methods=['GET'])

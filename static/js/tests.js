@@ -90,33 +90,26 @@ async function loadTests() {
             url += `&search=${encodeURIComponent(currentSearch)}`;
         }
 
+        // Send marker filter to API
+        if (currentMarkerFilter) {
+            url += `&marker=${encodeURIComponent(currentMarkerFilter)}`;
+        }
+
+        // Send TestRail filter to API
+        if (currentTestrailFilter) {
+            url += `&testrail_filter=${encodeURIComponent(currentTestrailFilter)}`;
+        }
+
         const data = await apiCall(url);
 
-
-        // Apply client-side TestRail filter
-        let filteredTests = data.tests;
-        if (currentTestrailFilter === 'with') {
-            filteredTests = data.tests.filter(t => t.testrail_case_id);
-        } else if (currentTestrailFilter === 'without') {
-            filteredTests = data.tests.filter(t => !t.testrail_case_id);
-        } else if (currentTestrailFilter === 'deleted') {
-            filteredTests = data.tests.filter(t => t.testrail_status === 'deleted');
-        }
-
-        // Apply marker filter
-        if (currentMarkerFilter) {
-            filteredTests = filteredTests.filter(test => {
-                const markers = test.markers || [];
-                return markers.includes(currentMarkerFilter);
-            });
-        }
-
-        if (filteredTests.length === 0) {
+        if (data.tests.length === 0) {
             tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No tests found</td></tr>';
+            // Clear pagination when no results
+            document.getElementById('pagination').innerHTML = '';
             return;
         }
 
-        tbody.innerHTML = filteredTests.map(test => `
+        tbody.innerHTML = data.tests.map(test => `
             <tr>
                 <td>${formatTestRailIds(test.testrail_case_id)}</td>
                 <td>${getTestRailStatusBadge(test.testrail_status, test.testrail_case_id)}</td>
