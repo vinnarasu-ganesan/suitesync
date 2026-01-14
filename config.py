@@ -21,6 +21,10 @@ class Config:
     GIT_CLONE_PATH = os.environ.get('GIT_CLONE_PATH', os.path.join(basedir, 'repos', 'vme-test-repo'))
     GIT_BRANCH = os.environ.get('GIT_BRANCH', 'main')
 
+    # GitHub Authentication (Optional - for private repos)
+    GITHUB_USERNAME = os.environ.get('GITHUB_USERNAME', '')
+    GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN', '')  # Personal Access Token or Password
+
     # TestRail
     TESTRAIL_URL = os.environ.get('TESTRAIL_URL', '')
     TESTRAIL_EMAIL = os.environ.get('TESTRAIL_EMAIL', '')

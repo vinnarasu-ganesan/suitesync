@@ -16,7 +16,9 @@ class SyncService:
         self.git_service = GitService(
             config.get('GIT_REPO_URL'),
             config.get('GIT_CLONE_PATH'),
-            config.get('GIT_BRANCH')
+            config.get('GIT_BRANCH'),
+            username=config.get('GITHUB_USERNAME'),
+            token=config.get('GITHUB_TOKEN')
         )
 
         if config.get('TESTRAIL_URL') and config.get('TESTRAIL_EMAIL') and config.get('TESTRAIL_API_KEY'):

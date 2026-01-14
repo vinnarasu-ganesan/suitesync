@@ -9,11 +9,41 @@ logger = logging.getLogger(__name__)
 class GitService:
     """Service for managing Git repository operations."""
 
-    def __init__(self, repo_url, clone_path, branch='main'):
+    def __init__(self, repo_url, clone_path, branch='main', username=None, token=None):
         self.repo_url = repo_url
         self.clone_path = clone_path
         self.branch = branch
+        self.username = username
+        self.token = token
         self.repo = None
+
+        # Build authenticated URL if credentials are provided
+        self.auth_repo_url = self._build_auth_url() if username and token else repo_url
+
+    def _build_auth_url(self):
+        """Build authenticated Git URL with username and token."""
+        if not self.username or not self.token:
+            return self.repo_url
+
+        # Handle different URL formats
+        if self.repo_url.startswith('https://'):
+            # Extract the part after https://
+            url_part = self.repo_url.replace('https://', '')
+            # Build authenticated URL: https://username:token@github.com/...
+            auth_url = f'https://{self.username}:{self.token}@{url_part}'
+            logger.info(f"Using authenticated URL for repository access")
+            return auth_url
+        elif self.repo_url.startswith('http://'):
+            # Extract the part after http://
+            url_part = self.repo_url.replace('http://', '')
+            # Build authenticated URL: http://username:token@github.com/...
+            auth_url = f'http://{self.username}:{self.token}@{url_part}'
+            logger.info(f"Using authenticated URL for repository access")
+            return auth_url
+        else:
+            # For SSH URLs or other formats, return as-is
+            logger.warning(f"Cannot add authentication to URL format: {self.repo_url}")
+            return self.repo_url
 
     def clone_or_update(self):
         """Clone the repository if it doesn't exist, otherwise pull latest changes."""
@@ -21,13 +51,19 @@ class GitService:
             if os.path.exists(self.clone_path):
                 logger.info(f"Repository exists at {self.clone_path}, pulling latest changes...")
                 self.repo = Repo(self.clone_path)
+
+                # Update remote URL if using authentication
+                if self.auth_repo_url != self.repo_url:
+                    origin = self.repo.remotes.origin
+                    origin.set_url(self.auth_repo_url)
+
                 origin = self.repo.remotes.origin
                 origin.pull(self.branch)
                 logger.info(f"Successfully pulled latest changes from {self.branch}")
             else:
                 logger.info(f"Cloning repository from {self.repo_url}...")
                 os.makedirs(os.path.dirname(self.clone_path), exist_ok=True)
-                self.repo = Repo.clone_from(self.repo_url, self.clone_path, branch=self.branch)
+                self.repo = Repo.clone_from(self.auth_repo_url, self.clone_path, branch=self.branch)
                 logger.info(f"Successfully cloned repository to {self.clone_path}")
 
             return True
