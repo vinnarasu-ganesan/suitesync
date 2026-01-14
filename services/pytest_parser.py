@@ -2,8 +2,83 @@ import ast
 import re
 import os
 import logging
+import sys
 
 logger = logging.getLogger(__name__)
+
+
+def safe_unparse(node):
+    """
+    Safely convert AST node to source code string.
+    Uses ast.unparse() for Python 3.9+ or astor for older versions.
+    Falls back to basic string extraction if neither is available.
+    """
+    # Try ast.unparse (Python 3.9+)
+    if hasattr(ast, 'unparse'):
+        try:
+            return ast.unparse(node)
+        except Exception as e:
+            logger.debug(f"ast.unparse failed: {e}")
+
+    # Try astor library (if installed)
+    try:
+        import astor
+        return astor.to_source(node).strip()
+    except ImportError:
+        pass
+    except Exception as e:
+        logger.debug(f"astor.to_source failed: {e}")
+
+    # Fallback: Basic extraction using ast.get_source_segment (Python 3.8+)
+    # or manual reconstruction for simple cases
+    try:
+        # For Name nodes
+        if isinstance(node, ast.Name):
+            return node.id
+        # For Attribute nodes (e.g., pytest.mark.testrail)
+        elif isinstance(node, ast.Attribute):
+            value_str = safe_unparse(node.value) if hasattr(node, 'value') else ''
+            return f"{value_str}.{node.attr}" if value_str else node.attr
+        # For Call nodes
+        elif isinstance(node, ast.Call):
+            func_str = safe_unparse(node.func)
+            # Try to get arguments
+            args = []
+            for arg in node.args:
+                if isinstance(arg, ast.Constant):
+                    args.append(repr(arg.value))
+                elif isinstance(arg, (ast.Num, ast.Str)):  # Python 3.7 compatibility
+                    args.append(repr(arg.n if hasattr(arg, 'n') else arg.s))
+
+            kwargs = []
+            for keyword in node.keywords:
+                arg_name = keyword.arg
+                if isinstance(keyword.value, ast.Constant):
+                    kwargs.append(f"{arg_name}={repr(keyword.value.value)}")
+                elif isinstance(keyword.value, ast.List):
+                    # Handle list values like id=[123, 456]
+                    list_items = []
+                    for elt in keyword.value.elts:
+                        if isinstance(elt, ast.Constant):
+                            list_items.append(str(elt.value))
+                        elif hasattr(elt, 'n'):  # ast.Num in Python 3.7
+                            list_items.append(str(elt.n))
+                    kwargs.append(f"{arg_name}=[{', '.join(list_items)}]")
+                elif hasattr(keyword.value, 'n'):  # ast.Num in Python 3.7
+                    kwargs.append(f"{arg_name}={keyword.value.n}")
+
+            all_args = args + kwargs
+            return f"{func_str}({', '.join(all_args)})"
+        # For simple constants
+        elif isinstance(node, ast.Constant):
+            return repr(node.value)
+        elif isinstance(node, (ast.Num, ast.Str)):  # Python 3.7 compatibility
+            return repr(node.n if hasattr(node, 'n') else node.s)
+    except Exception as e:
+        logger.debug(f"Fallback unparse failed: {e}")
+
+    # Last resort: return empty string
+    return ""
 
 
 class PytestParser:
@@ -70,7 +145,7 @@ class PytestParser:
 
         for decorator in decorators:
             try:
-                decorator_source = ast.unparse(decorator)
+                decorator_source = safe_unparse(decorator)
 
                 # Match pytest.mark.* patterns
                 # Examples: @pytest.mark.always, @pytest.mark.run(order=1), @pytest.mark.smoke
@@ -125,7 +200,7 @@ class PytestParser:
 
                     # Extract TestRail ID from decorators
                     for decorator in node.decorator_list:
-                        decorator_source = ast.unparse(decorator)
+                        decorator_source = safe_unparse(decorator)
                         testrail_id = PytestParser.extract_testrail_id(decorator_source)
                         if testrail_id:
                             test_info['testrail_case_id'] = testrail_id

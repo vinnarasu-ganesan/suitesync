@@ -85,6 +85,11 @@ GIT_REPO_URL=https://github.com/glcp/vme-test-repo
 GIT_BRANCH=main
 GIT_CLONE_PATH=./repos/vme-test-repo
 
+# GitHub Authentication (Optional - for private repos)
+# Use Personal Access Token (PAT) instead of password
+GITHUB_USERNAME=your-github-username
+GITHUB_TOKEN=ghp_your_personal_access_token_here
+
 # TestRail Configuration (Optional - Add your credentials)
 TESTRAIL_URL=https://testrail.devx.hpedev.net
 TESTRAIL_EMAIL=your-email@example.com
@@ -96,6 +101,33 @@ SYNC_ON_STARTUP=false
 ```
 
 **Save the file**: Press `Ctrl+O`, `Enter`, then `Ctrl+X`
+
+### 7a. GitHub Authentication (For Private Repositories)
+
+If you're accessing a **private GitHub repository**, you need to provide authentication credentials:
+
+#### Creating a GitHub Personal Access Token (PAT):
+
+1. **Go to GitHub Settings**: https://github.com/settings/tokens
+2. **Click "Generate new token"** → "Generate new token (classic)"
+3. **Give it a name**: e.g., "SuiteSync Access"
+4. **Select scopes**:
+   - For private repos: Check `repo` (Full control of private repositories)
+   - For public repos: Check `public_repo` (Access public repositories)
+5. **Click "Generate token"**
+6. **Copy the token** (starts with `ghp_`) - you won't see it again!
+
+#### Add to .env file:
+
+```env
+GITHUB_USERNAME=your-github-username
+GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+**Note:** 
+- For public repositories, you can skip this step
+- Keep your token secure - never commit it to version control
+- If using SSH URLs (git@github.com:...), authentication happens via SSH keys, not tokens
 
 ### 8. Create Required Directories
 
@@ -339,6 +371,12 @@ DATABASE_URL=sqlite:///instance/suitesync.db
 GIT_REPO_URL=https://github.com/glcp/vme-test-repo
 GIT_BRANCH=main
 GIT_CLONE_PATH=./repos/vme-test-repo
+
+# GitHub Authentication (Optional - for private repos)
+# Create a Personal Access Token at: https://github.com/settings/tokens
+# Required scopes: repo (for private repos) or public_repo (for public repos)
+GITHUB_USERNAME=your-github-username
+GITHUB_TOKEN=ghp_your_personal_access_token_here
 
 # TestRail Settings (Optional)
 TESTRAIL_URL=https://testrail.devx.hpedev.net

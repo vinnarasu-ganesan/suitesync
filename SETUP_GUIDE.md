@@ -59,6 +59,10 @@ FLASK_ENV=development
 GIT_REPO_URL=https://github.com/glcp/vme-test-repo
 GIT_BRANCH=main
 
+# GitHub Authentication (Optional - for private repos)
+GITHUB_USERNAME=your-github-username
+GITHUB_TOKEN=ghp_your_personal_access_token_here
+
 # TestRail Configuration (Optional - Add your credentials)
 TESTRAIL_URL=https://your-instance.testrail.io
 TESTRAIL_EMAIL=your-email@example.com
