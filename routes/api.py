@@ -25,11 +25,13 @@ def get_tests():
         query = query.filter_by(status=status)
 
     if search:
+        # Case-insensitive search
+        search_term = f"%{search}%"
         query = query.filter(
             db.or_(
-                Test.test_id.contains(search),
-                Test.test_name.contains(search),
-                Test.test_file.contains(search)
+                Test.test_id.ilike(search_term),
+                Test.test_name.ilike(search_term),
+                Test.test_file.ilike(search_term)
             )
         )
 
@@ -180,10 +182,12 @@ def get_testrail_cases():
         if priority_id:
             query = query.filter(TestRailCase.priority_id == priority_id)
         if search:
+            # Case-insensitive search for both case_id and title
+            search_term = f"%{search}%"
             query = query.filter(
                 db.or_(
-                    TestRailCase.case_id.contains(search),
-                    TestRailCase.title.contains(search)
+                    TestRailCase.case_id.ilike(search_term),
+                    TestRailCase.title.ilike(search_term)
                 )
             )
 
