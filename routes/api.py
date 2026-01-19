@@ -31,7 +31,8 @@ def get_tests():
             db.or_(
                 Test.test_id.ilike(search_term),
                 Test.test_name.ilike(search_term),
-                Test.test_file.ilike(search_term)
+                Test.test_file.ilike(search_term),
+                Test.testrail_case_id.ilike(search_term)
             )
         )
 
