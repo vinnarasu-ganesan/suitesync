@@ -34,11 +34,11 @@ class TestRailService:
 
         try:
             if method == 'GET':
-                response = requests.get(url, headers=self.headers)
+                response = requests.get(url, headers=self.headers, verify=False)
             elif method == 'POST':
-                response = requests.post(url, headers=self.headers, json=data)
+                response = requests.post(url, headers=self.headers, json=data, verify=False)
             elif method == 'PUT':
-                response = requests.put(url, headers=self.headers, json=data)
+                response = requests.put(url, headers=self.headers, json=data, verify=False)
             else:
                 raise ValueError(f"Unsupported HTTP method: {method}")
 

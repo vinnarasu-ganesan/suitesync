@@ -221,6 +221,11 @@ def get_testrail_cases():
         # Optimize: Create lightweight dict without custom_fields to reduce payload size
         cases_data = []
         for case in pagination.items:
+            # Extract automation_status from custom_fields if available
+            automation_status = None
+            if case.custom_fields and 'custom_automation_status' in case.custom_fields:
+                automation_status = case.custom_fields['custom_automation_status']
+
             cases_data.append({
                 'id': case.id,
                 'case_id': case.case_id,
@@ -231,7 +236,8 @@ def get_testrail_cases():
                 'suite_name': case.suite_name,
                 'type_id': case.type_id,
                 'priority_id': case.priority_id,
-                # Exclude custom_fields to reduce data transfer
+                'automation_status': automation_status,
+                # Exclude full custom_fields to reduce data transfer
                 'created_at': case.created_at.isoformat() if case.created_at else None,
                 'updated_at': case.updated_at.isoformat() if case.updated_at else None
             })
@@ -290,12 +296,41 @@ def get_testrail_stats():
 
     type_breakdown = {str(t[0]): t[1] for t in types if t[0]}
 
+    # Get cases by automation status from custom_fields
+    automation_status_breakdown = {
+        '0': 0,  # Deleted
+        '1': 0,  # Manual
+        '2': 0,  # Obsolete
+        '3': 0,  # Will Not Automate
+        '4': 0,  # Automated
+        '5': 0,  # To Be Automated
+        'null': 0  # No status set
+    }
+
+    # Query all cases with custom_fields
+    cases_with_custom_fields = TestRailCase.query.filter(TestRailCase.custom_fields.isnot(None)).all()
+
+    for case in cases_with_custom_fields:
+        if case.custom_fields and 'custom_automation_status' in case.custom_fields:
+            status = str(case.custom_fields['custom_automation_status'])
+            if status in automation_status_breakdown:
+                automation_status_breakdown[status] += 1
+            else:
+                automation_status_breakdown['null'] += 1
+        else:
+            automation_status_breakdown['null'] += 1
+
+    # Count cases without custom_fields at all
+    cases_without_custom_fields = TestRailCase.query.filter(TestRailCase.custom_fields.is_(None)).count()
+    automation_status_breakdown['null'] += cases_without_custom_fields
+
     return jsonify({
         'total_cases': total_cases,
         'unique_sections': unique_sections,
         'unique_suites': unique_suites,
         'priority_breakdown': priority_breakdown,
-        'type_breakdown': type_breakdown
+        'type_breakdown': type_breakdown,
+        'automation_status_breakdown': automation_status_breakdown
     })
 
 

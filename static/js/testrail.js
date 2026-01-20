@@ -147,7 +147,7 @@ async function loadTestrailCases() {
         console.log(`[TestRail] Received ${data.cases.length} cases`);
 
         if (data.cases.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No TestRail cases found matching the filters.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">No TestRail cases found matching the filters.</td></tr>';
             document.getElementById('pagination').innerHTML = '';
             console.timeEnd('[TestRail] Total load time');
             return;
@@ -162,6 +162,7 @@ async function loadTestrailCases() {
                 <td>${testCase.section_name || testCase.section_id || 'N/A'}</td>
                 <td>${testCase.type_id || 'N/A'}</td>
                 <td>${getPriorityBadge(testCase.priority_id)}</td>
+                <td>${getAutomationStatusBadge(testCase.automation_status)}</td>
                 <td><small>${formatDate(testCase.updated_at)}</small></td>
             </tr>
         `).join('');
@@ -177,7 +178,7 @@ async function loadTestrailCases() {
     } catch (error) {
         console.error('[TestRail] Error:', error);
         tbody.innerHTML = `
-            <tr><td colspan="7" class="text-center text-danger">
+            <tr><td colspan="8" class="text-center text-danger">
                 <i class="bi bi-exclamation-triangle"></i> Error loading TestRail cases: ${error.message}
                 <br><small>Check the browser console for more details.</small>
             </td></tr>
@@ -235,6 +236,21 @@ function getPriorityBadge(priorityId) {
     };
 
     return priorities[priorityId] || `<span class="badge bg-secondary">${priorityId}</span>`;
+}
+
+function getAutomationStatusBadge(automationStatus) {
+    if (!automationStatus && automationStatus !== 0) return '<span class="text-muted">N/A</span>';
+
+    const statuses = {
+        '0': '<span class="badge bg-danger">Deleted</span>',
+        '1': '<span class="badge bg-warning text-dark">Manual</span>',
+        '2': '<span class="badge bg-dark">Obsolete</span>',
+        '3': '<span class="badge bg-danger">Will Not Automate</span>',
+        '4': '<span class="badge bg-success">Automated</span>',
+        '5': '<span class="badge bg-secondary">To Be Automated</span>'
+    };
+
+    return statuses[String(automationStatus)] || `<span class="badge bg-secondary">${automationStatus}</span>`;
 }
 
 

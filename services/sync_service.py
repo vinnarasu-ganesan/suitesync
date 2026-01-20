@@ -171,6 +171,12 @@ class SyncService:
                 section_id = str(case.get('section_id', ''))
                 section_name = sections_map.get(section_id, f'Section {section_id}')
 
+                # Extract all custom fields (fields starting with 'custom_')
+                custom_fields = {}
+                for key, value in case.items():
+                    if key.startswith('custom_'):
+                        custom_fields[key] = value
+
                 testrail_case = TestRailCase.query.filter_by(case_id=case_id).first()
 
                 if testrail_case:
@@ -181,7 +187,7 @@ class SyncService:
                     testrail_case.suite_name = suite_name
                     testrail_case.type_id = case.get('type_id')
                     testrail_case.priority_id = case.get('priority_id')
-                    testrail_case.custom_fields = case.get('custom_fields', {})
+                    testrail_case.custom_fields = custom_fields
                     testrail_case.updated_at = datetime.utcnow()
                 else:
                     testrail_case = TestRailCase(
@@ -193,7 +199,7 @@ class SyncService:
                         suite_name=suite_name,
                         type_id=case.get('type_id'),
                         priority_id=case.get('priority_id'),
-                        custom_fields=case.get('custom_fields', {})
+                        custom_fields=custom_fields
                     )
                     db.session.add(testrail_case)
 

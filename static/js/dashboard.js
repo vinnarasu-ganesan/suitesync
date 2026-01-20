@@ -1,12 +1,14 @@
 // Dashboard page JavaScript
 
 let syncHistoryChart = null;
+let automationStatusChart = null;
 
 document.addEventListener('DOMContentLoaded', () => {
     loadDashboardData();
     loadLastSyncStatus();
     loadRecentTests();
     loadSyncHistory();
+    loadAutomationStatusChart();
 });
 
 async function loadDashboardData() {
@@ -152,6 +154,124 @@ async function loadSyncHistory() {
         });
     } catch (error) {
         console.error('Error loading sync history:', error);
+    }
+}
+
+async function loadAutomationStatusChart() {
+    try {
+        const data = await apiCall('/testrail/stats');
+
+        if (!data.automation_status_breakdown) {
+            console.error('No automation status breakdown data');
+            return;
+        }
+
+        const statusLabels = {
+            '0': 'Deleted',
+            '1': 'Manual',
+            '2': 'Obsolete',
+            '3': 'Will Not Automate',
+            '4': 'Automated',
+            '5': 'To Be Automated',
+            'null': 'No Status'
+        };
+
+        const statusColors = {
+            '0': 'rgba(220, 53, 69, 0.8)',      // Red - Deleted
+            '1': 'rgba(255, 193, 7, 0.8)',      // Yellow - Manual
+            '2': 'rgba(52, 58, 64, 0.8)',       // Dark - Obsolete
+            '3': 'rgba(220, 53, 69, 0.8)',      // Red - Will Not Automate
+            '4': 'rgba(25, 135, 84, 0.8)',      // Green - Automated
+            '5': 'rgba(108, 117, 125, 0.8)',    // Gray - To Be Automated
+            'null': 'rgba(173, 181, 189, 0.6)'  // Light Gray - No Status
+        };
+
+        const breakdown = data.automation_status_breakdown;
+
+        // Filter out statuses with 0 count for cleaner display
+        const labels = [];
+        const counts = [];
+        const colors = [];
+
+        Object.keys(breakdown).forEach(key => {
+            if (breakdown[key] > 0) {
+                labels.push(statusLabels[key] || key);
+                counts.push(breakdown[key]);
+                colors.push(statusColors[key] || 'rgba(108, 117, 125, 0.8)');
+            }
+        });
+
+        // Create the chart
+        const ctx = document.getElementById('automationStatusChart').getContext('2d');
+
+        if (automationStatusChart) {
+            automationStatusChart.destroy();
+        }
+
+        automationStatusChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: counts,
+                    backgroundColor: colors,
+                    borderWidth: 2,
+                    borderColor: '#fff'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'right',
+                        labels: {
+                            padding: 15,
+                            font: {
+                                size: 12
+                            }
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const label = context.label || '';
+                                const value = context.parsed || 0;
+                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                const percentage = ((value / total) * 100).toFixed(1);
+                                return `${label}: ${value} (${percentage}%)`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // Create legend with counts
+        const legendHtml = `
+            <h6 class="mb-3">Status Breakdown</h6>
+            <div class="list-group list-group-flush">
+                ${labels.map((label, index) => `
+                    <div class="list-group-item d-flex justify-content-between align-items-center px-0">
+                        <div>
+                            <span style="display:inline-block; width:12px; height:12px; background-color:${colors[index]}; border-radius:2px; margin-right:8px;"></span>
+                            <small>${label}</small>
+                        </div>
+                        <span class="badge bg-secondary rounded-pill">${counts[index]}</span>
+                    </div>
+                `).join('')}
+            </div>
+            <div class="mt-3 pt-3 border-top">
+                <strong>Total Cases: ${data.total_cases}</strong>
+            </div>
+        `;
+
+        document.getElementById('automation-status-legend').innerHTML = legendHtml;
+
+    } catch (error) {
+        console.error('Error loading automation status chart:', error);
+        document.getElementById('automation-status-legend').innerHTML =
+            '<p class="text-muted">Error loading automation status data</p>';
     }
 }
 
