@@ -79,16 +79,16 @@ for node in ast.walk(tree):
 
             # Check if it's parametrize
             if 'parametrize' in dec_source:
-                print(f"    ✅ This is a parametrize decorator")
+                print(f"    [OK] This is a parametrize decorator")
 
                 # Try to extract IDs
                 ids = PytestParser.extract_parametrize_testrail_ids(decorator)
                 print(f"    Extracted IDs: {ids}")
 
                 if ids:
-                    print(f"    ✅ SUCCESS - Extracted {len(ids)} IDs")
+                    print(f"    [OK] SUCCESS - Extracted {len(ids)} IDs")
                 else:
-                    print(f"    ❌ FAILED - No IDs extracted")
+                    print(f"    [OK] FAILED - No IDs extracted")
                     print(f"    Debugging...")
 
                     # Debug the AST structure
@@ -113,9 +113,9 @@ for node in ast.walk(tree):
                                     print(f"        Source: {elem_source[:80]}...")
 
                                     if 'testrail' in elem_source:
-                                        print(f"        ✅ Contains 'testrail'")
+                                        print(f"        [OK] Contains 'testrail'")
                                     else:
-                                        print(f"        ❌ No 'testrail' found")
+                                        print(f"        [OK] No 'testrail' found")
         break
 
 print("\n" + "=" * 80)
