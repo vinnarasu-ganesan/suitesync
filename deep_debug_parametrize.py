@@ -29,15 +29,15 @@ print("-" * 80)
 # Get the file content
 content = git_service.get_file_content(test_file)
 if not content:
-    print("❌ Could not get file content!")
+    print("[ERROR] Could not get file content!")
     exit(1)
 
-print(f"✅ Got file content ({len(content)} chars)")
+print(f"[OK] Got file content ({len(content)} chars)")
 
 # Parse it
 print("\nParsing with PytestParser...")
 tests = PytestParser.parse_test_file(test_file, content)
-print(f"✅ Parsed {len(tests)} tests")
+print(f"[OK] Parsed {len(tests)} tests")
 
 # Find parametrized tests
 print("\n" + "=" * 80)
@@ -55,9 +55,9 @@ if parametrized_tests:
         if test['testrail_case_id']:
             ids = test['testrail_case_id'].split(',')
             print(f"   Number of IDs: {len(ids)}")
-            print(f"   Status: ✅ HAS IDs")
+            print(f"   Status: [OK] HAS IDs")
         else:
-            print(f"   Status: ❌ NO IDs EXTRACTED")
+            print(f"   Status: [ERROR] NO IDs EXTRACTED")
 
 # Now let's manually test the extraction on a specific test
 print("\n" + "=" * 80)
