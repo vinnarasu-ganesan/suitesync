@@ -147,10 +147,51 @@ This is a **one-time migration** required after deploying the parametrize extrac
 
 If after running the fix you still don't see 226 tests with IDs:
 
+### Scenario 1: Force Re-sync Didn't Increase Count
+
+If `simple_force_resync.py` shows the count didn't increase (still ~184 instead of 226):
+
+**This means the parser itself is not extracting TestRail IDs from parametrize decorators.**
+
+Run this deep debug script:
+```bash
+cd ~/suitesync
+git pull origin main
+python deep_debug_parametrize.py
+```
+
+**Expected output (working correctly):**
+```
+Found 12 parametrized tests
+1. test_add_disk_with_disk_type_thick_thin
+   TestRail ID: C42984636,C42984637
+   Status: [OK] HAS IDs
+
+MANUAL EXTRACTION TEST:
+  Extracted IDs: ['C42984636', 'C42984637']
+  [OK] SUCCESS - Extracted 2 IDs
+```
+
+**If you see "[ERROR] NO IDs EXTRACTED":**
+- The extraction logic is failing
+- Possible causes:
+  - Python version incompatibility (need 3.8+)
+  - AST parsing differences
+  - safe_unparse() function issues
+
+**Solutions to try:**
+1. Check Python version: `python --version` (should be 3.8+)
+2. Clear Python cache: `find . -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null`
+3. Restart the app completely
+4. Share the debug output for further investigation
+
+### Scenario 2: Other Issues
+
 1. Check if git pull worked: `git log --oneline -5`
 2. Check Python version: `python --version` (should be 3.8+)
 3. Share output from: `python simple_force_resync.py`
 4. Share output from: `python quick_compare.py`
+5. Share output from: `python deep_debug_parametrize.py`
 
 ---
 
