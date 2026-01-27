@@ -538,6 +538,7 @@ def validate_testrail_ids():
         validated_count = 0
         deleted_count = 0
         valid_count = 0
+        partial_count = 0
 
         for test in tests:
             if not test.testrail_case_id:
@@ -545,20 +546,30 @@ def validate_testrail_ids():
 
             # Parse multiple TestRail IDs (comma-separated)
             testrail_ids = [tid.strip() for tid in test.testrail_case_id.split(',')]
-            all_valid = True
+            valid_ids = []
+            invalid_ids = []
 
             for tid in testrail_ids:
                 tid_upper = tid.upper()
                 # Check if the ID exists in our valid set
-                if tid_upper not in valid_case_ids and tid_upper.replace('C', '') not in valid_case_ids:
-                    all_valid = False
-                    break
+                if tid_upper in valid_case_ids or tid_upper.replace('C', '') in valid_case_ids:
+                    valid_ids.append(tid)
+                else:
+                    invalid_ids.append(tid)
 
-            # Update test status
-            if all_valid:
+            # Update test status based on validation results
+            if len(valid_ids) == len(testrail_ids):
+                # All IDs are valid
                 test.testrail_status = 'valid'
                 valid_count += 1
+            elif len(valid_ids) > 0:
+                # Some IDs are valid, some are not (partial match)
+                # This is acceptable for parametrized tests
+                test.testrail_status = 'valid'
+                valid_count += 1
+                logger.info(f"Test {test.test_name} has partial validation: {len(valid_ids)}/{len(testrail_ids)} IDs found")
             else:
+                # No valid IDs found - all are deleted/missing
                 test.testrail_status = 'deleted'
                 deleted_count += 1
 

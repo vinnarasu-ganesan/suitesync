@@ -162,6 +162,53 @@ class PytestParser:
         return markers
 
     @staticmethod
+    def extract_parametrize_testrail_ids(decorator):
+        """
+        Extract TestRail IDs from pytest.mark.parametrize decorators.
+        Handles patterns like:
+        @pytest.mark.parametrize(
+            "disk_type",
+            [
+                pytest.param("Thick (Lazy Zero)", marks=pytest.mark.testrail(id=42984636)),
+                pytest.param("Thin", marks=pytest.mark.testrail(id=42984637)),
+            ],
+        )
+
+        Returns a list of TestRail IDs found in the parametrize arguments.
+        """
+        testrail_ids = []
+
+        try:
+            # Check if this is a parametrize decorator
+            if not isinstance(decorator, ast.Call):
+                return testrail_ids
+
+            # Check if it's pytest.mark.parametrize
+            decorator_source = safe_unparse(decorator)
+            if 'parametrize' not in decorator_source:
+                return testrail_ids
+
+            # Look through all arguments in the parametrize call
+            for arg in decorator.args:
+                # The second argument typically contains the parameter values (a list)
+                if isinstance(arg, (ast.List, ast.Tuple)):
+                    for element in arg.elts:
+                        # Each element might be a pytest.param() call
+                        if isinstance(element, ast.Call):
+                            element_source = safe_unparse(element)
+                            # Check if this contains testrail marker
+                            if 'testrail' in element_source:
+                                # Extract the ID from the marks argument
+                                testrail_id = PytestParser.extract_testrail_id(element_source)
+                                if testrail_id:
+                                    testrail_ids.append(testrail_id)
+
+        except Exception as e:
+            logger.debug(f"Error extracting parametrize testrail IDs: {e}")
+
+        return testrail_ids
+
+    @staticmethod
     def parse_test_file(file_path, file_content):
         """Parse a Python test file and extract test information."""
         tests = []
@@ -199,12 +246,29 @@ class PytestParser:
                     test_info['markers'] = PytestParser.extract_markers(node.decorator_list)
 
                     # Extract TestRail ID from decorators
+                    parametrize_testrail_ids = []
+                    direct_testrail_id = None
+
                     for decorator in node.decorator_list:
                         decorator_source = safe_unparse(decorator)
-                        testrail_id = PytestParser.extract_testrail_id(decorator_source)
-                        if testrail_id:
-                            test_info['testrail_case_id'] = testrail_id
-                            break
+
+                        # First, check for parametrize decorator with testrail IDs
+                        if 'parametrize' in decorator_source:
+                            param_ids = PytestParser.extract_parametrize_testrail_ids(decorator)
+                            if param_ids:
+                                parametrize_testrail_ids.extend(param_ids)
+                        # Check for direct testrail marker on the function (not in parametrize)
+                        elif 'testrail' in decorator_source:
+                            testrail_id = PytestParser.extract_testrail_id(decorator_source)
+                            if testrail_id:
+                                direct_testrail_id = testrail_id
+
+                    # Prefer parametrize testrail IDs over direct ones
+                    if parametrize_testrail_ids:
+                        # Store all IDs as comma-separated (consistent with multiple ID format)
+                        test_info['testrail_case_id'] = ','.join(parametrize_testrail_ids)
+                    elif direct_testrail_id:
+                        test_info['testrail_case_id'] = direct_testrail_id
 
                     # If not found in decorators, check docstring
                     if not test_info['testrail_case_id'] and test_info['description']:
