@@ -55,12 +55,19 @@ def safe_unparse(node):
                 arg_name = keyword.arg
                 if isinstance(keyword.value, ast.Constant):
                     kwargs.append(f"{arg_name}={repr(keyword.value.value)}")
+                elif isinstance(keyword.value, ast.Call):
+                    # Handle nested Call nodes like marks=pytest.mark.testrail(id=123)
+                    nested_call = safe_unparse(keyword.value)
+                    kwargs.append(f"{arg_name}={nested_call}")
                 elif isinstance(keyword.value, ast.List):
-                    # Handle list values like id=[123, 456]
+                    # Handle list values like id=[123, 456] or marks=[...]
                     list_items = []
                     for elt in keyword.value.elts:
                         if isinstance(elt, ast.Constant):
                             list_items.append(str(elt.value))
+                        elif isinstance(elt, ast.Call):
+                            # Handle list of calls
+                            list_items.append(safe_unparse(elt))
                         elif hasattr(elt, 'n'):  # ast.Num in Python 3.7
                             list_items.append(str(elt.n))
                     kwargs.append(f"{arg_name}=[{', '.join(list_items)}]")
