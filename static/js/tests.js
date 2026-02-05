@@ -49,6 +49,11 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('validate-btn').addEventListener('click', async () => {
         await validateTestRailIds();
     });
+
+    // Clear filters button event listener
+    document.getElementById('clear-filters-btn').addEventListener('click', () => {
+        clearFilters();
+    });
 });
 
 async function loadMarkers() {
@@ -101,6 +106,9 @@ async function loadTests() {
         }
 
         const data = await apiCall(url);
+
+        // Update filter summary
+        updateFilterSummary(data.total);
 
         if (data.tests.length === 0) {
             tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No tests found</td></tr>';
@@ -306,3 +314,66 @@ function formatTestRailIds(caseIds) {
                    target="_blank" class="badge bg-info text-decoration-none">${id}</a>`;
     }).join(' ');
 }
+
+// Update filter summary banner
+function updateFilterSummary(totalCount) {
+    const filterSummary = document.getElementById('filter-summary');
+    const filterDescription = document.getElementById('filter-description');
+
+    // Check if any filters are active
+    const hasFilters = currentMarkerFilter || currentSearch || currentTestrailFilter || (currentStatus !== 'active');
+
+    if (hasFilters) {
+        let description = `<strong>${totalCount}</strong> test${totalCount !== 1 ? 's' : ''} found`;
+        const filters = [];
+
+        if (currentMarkerFilter) {
+            filters.push(`<span class="badge bg-primary">${currentMarkerFilter}</span>`);
+        }
+
+        if (currentSearch) {
+            filters.push(`Search: "<strong>${currentSearch}</strong>"`);
+        }
+
+        if (currentTestrailFilter) {
+            const testrailLabels = {
+                'with': 'With TestRail ID',
+                'without': 'Without TestRail ID',
+                'deleted': 'Deleted TestRail ID'
+            };
+            filters.push(`<span class="badge bg-info">${testrailLabels[currentTestrailFilter] || currentTestrailFilter}</span>`);
+        }
+
+        if (currentStatus && currentStatus !== 'active') {
+            filters.push(`Status: <strong>${currentStatus}</strong>`);
+        }
+
+        if (filters.length > 0) {
+            description += ` with filters: ${filters.join(', ')}`;
+        }
+
+        filterDescription.innerHTML = description;
+        filterSummary.style.display = 'block';
+    } else {
+        filterSummary.style.display = 'none';
+    }
+}
+
+// Clear all filters
+function clearFilters() {
+    currentMarkerFilter = '';
+    currentSearch = '';
+    currentTestrailFilter = '';
+    currentStatus = 'active';
+    currentPage = 1;
+
+    // Reset UI elements
+    document.getElementById('marker-filter').value = '';
+    document.getElementById('search-input').value = '';
+    document.getElementById('testrail-filter').value = '';
+    document.getElementById('status-filter').value = 'active';
+
+    // Reload tests
+    loadTests();
+}
+
