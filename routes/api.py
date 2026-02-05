@@ -86,15 +86,21 @@ def get_test(test_id):
     test = Test.query.get_or_404(test_id)
 
     # Get associated TestRail case if available
-    testrail_case = None
+    testrail_cases = []
     if test.testrail_case_id:
-        testrail_case = TestRailCase.query.filter_by(
-            case_id=test.testrail_case_id
-        ).first()
+        # Handle multiple TestRail IDs
+        case_ids = [cid.strip() for cid in test.testrail_case_id.split(',')]
+        for case_id in case_ids:
+            testrail_case = TestRailCase.query.filter_by(case_id=case_id).first()
+            if testrail_case:
+                testrail_cases.append(testrail_case)
 
     result = test.to_dict()
-    if testrail_case:
-        result['testrail_case'] = testrail_case.to_dict()
+    if testrail_cases:
+        # If multiple cases, return the first one but include all
+        result['testrail_case'] = testrail_cases[0].to_dict()
+        if len(testrail_cases) > 1:
+            result['testrail_cases'] = [tc.to_dict() for tc in testrail_cases]
 
     return jsonify(result)
 

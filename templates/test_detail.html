@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+
+{% block title %}Test Details - SuiteSync{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1><i class="bi bi-info-circle"></i> Test Details</h1>
+            <a href="/tests" class="btn btn-secondary">
+                <i class="bi bi-arrow-left"></i> Back to Tests
+            </a>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <div class="text-center py-4" id="loading">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+                <div id="test-content" style="display: none;">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <h5>Test Information</h5>
+                            <table class="table table-bordered">
+                                <tr>
+                                    <th width="30%">Test Name</th>
+                                    <td id="test-name">-</td>
+                                </tr>
+                                <tr>
+                                    <th>File Path</th>
+                                    <td id="test-file">-</td>
+                                </tr>
+                                <tr>
+                                    <th>TestRail ID</th>
+                                    <td id="test-testrail-id">-</td>
+                                </tr>
+                                <tr>
+                                    <th>TestRail Status</th>
+                                    <td id="test-testrail-status">-</td>
+                                </tr>
+                                <tr>
+                                    <th>Markers</th>
+                                    <td id="test-markers">-</td>
+                                </tr>
+                            </table>
+                        </div>
+                        <div class="col-md-6">
+                            <h5>TestRail Information</h5>
+                            <table class="table table-bordered">
+                                <tr>
+                                    <th width="30%">Suite Name</th>
+                                    <td id="test-suite-name">-</td>
+                                </tr>
+                                <tr>
+                                    <th>Section Name</th>
+                                    <td id="test-section-name">-</td>
+                                </tr>
+                                <tr>
+                                    <th>Automation Type</th>
+                                    <td id="test-automation-type">-</td>
+                                </tr>
+                                <tr>
+                                    <th>Created</th>
+                                    <td id="test-created">-</td>
+                                </tr>
+                                <tr>
+                                    <th>Updated</th>
+                                    <td id="test-updated">-</td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="row mt-4" id="testrail-link-section" style="display: none;">
+                        <div class="col-12">
+                            <a id="testrail-link" href="#" target="_blank" class="btn btn-primary">
+                                <i class="bi bi-box-arrow-up-right"></i> View in TestRail
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const testId = {{ test_id }};
+
+    document.addEventListener('DOMContentLoaded', function() {
+        fetchTestDetails();
+    });
+
+    async function fetchTestDetails() {
+        try {
+            const response = await fetch(`/api/tests/${testId}`);
+            if (!response.ok) {
+                throw new Error('Failed to fetch test details');
+            }
+
+            const test = await response.json();
+
+            // Basic information
+            document.getElementById('test-name').textContent = test.test_name;
+            document.getElementById('test-file').textContent = test.test_file;
+
+            // TestRail ID - handle multiple IDs
+            const testrailIdCell = document.getElementById('test-testrail-id');
+            if (test.testrail_case_id) {
+                const ids = test.testrail_case_id.split(',');
+                if (ids.length > 1) {
+                    testrailIdCell.innerHTML = ids.map(id => `<span class="badge bg-info me-1">${id.trim()}</span>`).join('');
+                } else {
+                    testrailIdCell.innerHTML = `<span class="badge bg-info">${test.testrail_case_id}</span>`;
+                }
+            } else {
+                testrailIdCell.innerHTML = '<span class="badge bg-secondary">N/A</span>';
+            }
+
+            // TestRail Status
+            const statusCell = document.getElementById('test-testrail-status');
+            if (!test.testrail_case_id) {
+                statusCell.innerHTML = '<span class="badge bg-secondary">No TestRail ID</span>';
+            } else if (test.testrail_status === 'valid') {
+                statusCell.innerHTML = '<span class="badge bg-success">Valid</span>';
+            } else if (test.testrail_status === 'deleted') {
+                statusCell.innerHTML = '<span class="badge bg-danger">Deleted</span>';
+            } else {
+                statusCell.innerHTML = '<span class="badge bg-warning">Unknown</span>';
+            }
+
+            // Markers
+            const markersCell = document.getElementById('test-markers');
+            if (test.markers && test.markers.length > 0) {
+                markersCell.innerHTML = test.markers.map(m => `<span class="badge bg-secondary me-1">${m}</span>`).join('');
+            } else {
+                markersCell.textContent = 'None';
+            }
+
+            // TestRail information - from nested testrail_case object if available
+            if (test.testrail_case) {
+                document.getElementById('test-suite-name').textContent = test.testrail_case.suite_name || '-';
+                document.getElementById('test-section-name').textContent = test.testrail_case.section_name || '-';
+
+                // Get automation type from custom fields if available
+                const automationType = test.testrail_case.custom_fields?.automation_type ||
+                                     test.testrail_case.custom_fields?.custom_automation_type || '-';
+                document.getElementById('test-automation-type').textContent = automationType;
+            } else {
+                document.getElementById('test-suite-name').textContent = '-';
+                document.getElementById('test-section-name').textContent = '-';
+                document.getElementById('test-automation-type').textContent = '-';
+            }
+
+            // Timestamps
+            document.getElementById('test-created').textContent = test.created_at ?
+                new Date(test.created_at).toLocaleString() : '-';
+            document.getElementById('test-updated').textContent = test.updated_at ?
+                new Date(test.updated_at).toLocaleString() : '-';
+
+            // TestRail link
+            if (test.testrail_case_id && test.testrail_status === 'valid') {
+                const firstId = test.testrail_case_id.split(',')[0].trim();
+                // Remove 'C' prefix if present for the case ID
+                const caseId = firstId.replace(/^C/, '');
+                const testrailUrl = `https://your-testrail-instance.com/index.php?/cases/view/${caseId}`;
+                document.getElementById('testrail-link').href = testrailUrl;
+                document.getElementById('testrail-link-section').style.display = 'block';
+            }
+
+            // Show content
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('test-content').style.display = 'block';
+
+        } catch (error) {
+            console.error('Error fetching test details:', error);
+            document.getElementById('loading').innerHTML =
+                '<div class="alert alert-danger">Failed to load test details: ' + error.message + '</div>';
+        }
+    }
+</script>
+{% endblock %}
