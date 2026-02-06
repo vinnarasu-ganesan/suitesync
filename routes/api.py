@@ -174,12 +174,13 @@ def get_testrail_cases():
         section_id = request.args.get('section_id', type=str)
         type_id = request.args.get('type_id', type=int)
         priority_id = request.args.get('priority_id', type=int)
+        automation_status = request.args.get('automation_status', type=str)
         search = request.args.get('search', type=str)
 
         # Build query with filters
         query = TestRailCase.query
 
-        # Apply filters
+        # Apply filters (except automation_status - handled after query for SQLite compatibility)
         if suite_id:
             query = query.filter(TestRailCase.suite_id == suite_id)
         if section_id:
@@ -220,44 +221,103 @@ def get_testrail_cases():
         else:
             query = query.order_by(sort_column.asc())
 
-        pagination = query.paginate(
-            page=page, per_page=per_page, error_out=False
-        )
+        # If automation_status filter is applied, we need to filter in Python (SQLite limitation)
+        if automation_status:
+            # Get all results (without pagination first) to filter by automation status
+            all_cases = query.all()
 
-        # Optimize: Create lightweight dict without custom_fields to reduce payload size
-        cases_data = []
-        for case in pagination.items:
-            # Extract automation_status from custom_fields if available
-            automation_status = None
-            if case.custom_fields and 'custom_automation_status' in case.custom_fields:
-                automation_status = case.custom_fields['custom_automation_status']
+            # Filter by automation status
+            filtered_cases = []
+            for case in all_cases:
+                case_automation_status = None
+                if case.custom_fields and 'custom_automation_status' in case.custom_fields:
+                    case_automation_status = str(case.custom_fields['custom_automation_status'])
 
-            cases_data.append({
-                'id': case.id,
-                'case_id': case.case_id,
-                'title': case.title,
-                'section_id': case.section_id,
-                'section_name': case.section_name,
-                'suite_id': case.suite_id,
-                'suite_name': case.suite_name,
-                'type_id': case.type_id,
-                'priority_id': case.priority_id,
-                'automation_status': automation_status,
-                # Exclude full custom_fields to reduce data transfer
-                'created_at': case.created_at.isoformat() if case.created_at else None,
-                'updated_at': case.updated_at.isoformat() if case.updated_at else None
+                # Match the automation status
+                if case_automation_status == automation_status:
+                    filtered_cases.append(case)
+
+            # Manual pagination
+            total_filtered = len(filtered_cases)
+            total_pages = (total_filtered + per_page - 1) // per_page if total_filtered > 0 else 1
+
+            # Get the page slice
+            start_idx = (page - 1) * per_page
+            end_idx = start_idx + per_page
+            paginated_cases = filtered_cases[start_idx:end_idx]
+
+            # Build response data
+            cases_data = []
+            for case in paginated_cases:
+                automation_status_val = None
+                if case.custom_fields and 'custom_automation_status' in case.custom_fields:
+                    automation_status_val = case.custom_fields['custom_automation_status']
+
+                cases_data.append({
+                    'id': case.id,
+                    'case_id': case.case_id,
+                    'title': case.title,
+                    'section_id': case.section_id,
+                    'section_name': case.section_name,
+                    'suite_id': case.suite_id,
+                    'suite_name': case.suite_name,
+                    'type_id': case.type_id,
+                    'priority_id': case.priority_id,
+                    'automation_status': automation_status_val,
+                    'created_at': case.created_at.isoformat() if case.created_at else None,
+                    'updated_at': case.updated_at.isoformat() if case.updated_at else None
+                })
+
+            elapsed = (time.time() - start) * 1000
+            logger.info(f"[API] /testrail/cases completed in {elapsed:.2f}ms - returned {len(cases_data)} cases (filtered by automation_status)")
+
+            return jsonify({
+                'cases': cases_data,
+                'total': total_filtered,
+                'pages': total_pages,
+                'current_page': page,
+                'per_page': per_page
             })
+        else:
+            # Normal pagination without automation_status filter
+            pagination = query.paginate(
+                page=page, per_page=per_page, error_out=False
+            )
 
-        elapsed = (time.time() - start) * 1000
-        logger.info(f"[API] /testrail/cases completed in {elapsed:.2f}ms - returned {len(cases_data)} cases")
+            # Optimize: Create lightweight dict without custom_fields to reduce payload size
+            cases_data = []
+            for case in pagination.items:
+                # Extract automation_status from custom_fields if available
+                automation_status_val = None
+                if case.custom_fields and 'custom_automation_status' in case.custom_fields:
+                    automation_status_val = case.custom_fields['custom_automation_status']
 
-        return jsonify({
-            'cases': cases_data,
-            'total': pagination.total,
-            'pages': pagination.pages,
-            'current_page': page,
-            'per_page': per_page
-        })
+                cases_data.append({
+                    'id': case.id,
+                    'case_id': case.case_id,
+                    'title': case.title,
+                    'section_id': case.section_id,
+                    'section_name': case.section_name,
+                    'suite_id': case.suite_id,
+                    'suite_name': case.suite_name,
+                    'type_id': case.type_id,
+                    'priority_id': case.priority_id,
+                    'automation_status': automation_status_val,
+                    # Exclude full custom_fields to reduce data transfer
+                    'created_at': case.created_at.isoformat() if case.created_at else None,
+                    'updated_at': case.updated_at.isoformat() if case.updated_at else None
+                })
+
+            elapsed = (time.time() - start) * 1000
+            logger.info(f"[API] /testrail/cases completed in {elapsed:.2f}ms - returned {len(cases_data)} cases")
+
+            return jsonify({
+                'cases': cases_data,
+                'total': pagination.total,
+                'pages': pagination.pages,
+                'current_page': page,
+                'per_page': per_page
+            })
 
     except Exception as e:
         logger.error(f"[API] Error in /testrail/cases: {e}", exc_info=True)

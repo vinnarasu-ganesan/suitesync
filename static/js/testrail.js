@@ -8,6 +8,7 @@ let currentFilters = {
     section_id: '',
     type_id: '',
     priority_id: '',
+    automation_status: '',
     search: ''
 };
 
@@ -18,6 +19,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     setupSearch();
     await loadFilterOptions();   // Load filter options
     loadTestrailCases();         // Load the cases
+
+    // Setup clear filters button
+    document.getElementById('clear-filters-btn').addEventListener('click', () => {
+        clearFilters();
+    });
 });
 
 async function loadFilterOptions() {
@@ -83,6 +89,13 @@ function setupFilters() {
         currentPage = 1;
         loadTestrailCases();
     });
+
+    // Automation status filter
+    document.getElementById('automation-status-filter').addEventListener('change', (e) => {
+        currentFilters.automation_status = e.target.value;
+        currentPage = 1;
+        loadTestrailCases();
+    });
 }
 
 function setupSearch() {
@@ -140,11 +153,15 @@ async function loadTestrailCases() {
         if (currentFilters.section_id) params += `&section_id=${currentFilters.section_id}`;
         if (currentFilters.type_id) params += `&type_id=${currentFilters.type_id}`;
         if (currentFilters.priority_id) params += `&priority_id=${currentFilters.priority_id}`;
+        if (currentFilters.automation_status) params += `&automation_status=${currentFilters.automation_status}`;
         if (currentFilters.search) params += `&search=${encodeURIComponent(currentFilters.search)}`;
 
         const data = await apiCall(`/testrail/cases?${params}`);
         console.timeEnd('[TestRail] API call');
         console.log(`[TestRail] Received ${data.cases.length} cases`);
+
+        // Update filter summary with total count
+        updateFilterSummary(data.total);
 
         if (data.cases.length === 0) {
             tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">No TestRail cases found matching the filters.</td></tr>';
@@ -156,7 +173,7 @@ async function loadTestrailCases() {
         console.time('[TestRail] HTML generation');
         tbody.innerHTML = data.cases.map(testCase => `
             <tr>
-                <td><span class="badge bg-info">${testCase.case_id}</span></td>
+                <td>${formatCaseIdLink(testCase.case_id)}</td>
                 <td>${testCase.title}</td>
                 <td>${testCase.suite_name || testCase.suite_id || 'N/A'}</td>
                 <td>${testCase.section_name || testCase.section_id || 'N/A'}</td>
@@ -297,3 +314,111 @@ function changePage(page) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
+// Format Case ID as a clickable link to TestRail
+function formatCaseIdLink(caseId) {
+    if (!caseId) {
+        return '<span class="text-muted">N/A</span>';
+    }
+
+    // Remove 'C' prefix if present for the URL
+    const numericId = caseId.replace('C', '');
+
+    return `<a href="https://testrail.devx.hpedev.net/index.php?/cases/view/${numericId}"
+               target="_blank"
+               class="badge bg-info text-decoration-none"
+               title="View in TestRail">${caseId}</a>`;
+}
+
+// Update filter summary banner
+function updateFilterSummary(totalCount) {
+    const filterSummary = document.getElementById('filter-summary');
+    const filterDescription = document.getElementById('filter-description');
+
+    // Check if any filters are active
+    const hasFilters = currentFilters.suite_id || currentFilters.section_id ||
+                       currentFilters.type_id || currentFilters.priority_id ||
+                       currentFilters.automation_status || currentFilters.search;
+
+    if (hasFilters) {
+        let description = `<strong>${totalCount}</strong> case${totalCount !== 1 ? 's' : ''} found`;
+        const filters = [];
+
+        // Get filter labels
+        if (currentFilters.suite_id) {
+            const suiteSelect = document.getElementById('suite-filter');
+            const selectedOption = suiteSelect.options[suiteSelect.selectedIndex];
+            filters.push(`Suite: <span class="badge bg-primary">${selectedOption.text}</span>`);
+        }
+
+        if (currentFilters.section_id) {
+            const sectionSelect = document.getElementById('section-filter');
+            const selectedOption = sectionSelect.options[sectionSelect.selectedIndex];
+            filters.push(`Section: <span class="badge bg-primary">${selectedOption.text}</span>`);
+        }
+
+        if (currentFilters.type_id) {
+            const typeSelect = document.getElementById('type-filter');
+            const selectedOption = typeSelect.options[typeSelect.selectedIndex];
+            filters.push(`Type: <span class="badge bg-info">${selectedOption.text}</span>`);
+        }
+
+        if (currentFilters.priority_id) {
+            const priorityLabels = {
+                '1': 'Critical',
+                '2': 'High',
+                '3': 'Medium',
+                '4': 'Low'
+            };
+            filters.push(`Priority: <span class="badge bg-warning text-dark">${priorityLabels[currentFilters.priority_id]}</span>`);
+        }
+
+        if (currentFilters.automation_status) {
+            const automationLabels = {
+                '0': 'Deleted',
+                '1': 'Manual',
+                '2': 'Obsolete',
+                '3': 'Will Not Automate',
+                '4': 'Automated',
+                '5': 'To Be Automated'
+            };
+            filters.push(`Automation: <span class="badge bg-secondary">${automationLabels[currentFilters.automation_status]}</span>`);
+        }
+
+        if (currentFilters.search) {
+            filters.push(`Search: "<strong>${currentFilters.search}</strong>"`);
+        }
+
+        if (filters.length > 0) {
+            description += ` with filters: ${filters.join(', ')}`;
+        }
+
+        filterDescription.innerHTML = description;
+        filterSummary.style.display = 'block';
+    } else {
+        filterSummary.style.display = 'none';
+    }
+}
+
+// Clear all filters
+function clearFilters() {
+    currentFilters = {
+        suite_id: '',
+        section_id: '',
+        type_id: '',
+        priority_id: '',
+        automation_status: '',
+        search: ''
+    };
+    currentPage = 1;
+
+    // Reset UI elements
+    document.getElementById('suite-filter').value = '';
+    document.getElementById('section-filter').value = '';
+    document.getElementById('type-filter').value = '';
+    document.getElementById('priority-filter').value = '';
+    document.getElementById('automation-status-filter').value = '';
+    document.getElementById('search-input').value = '';
+
+    // Reload cases
+    loadTestrailCases();
+}
