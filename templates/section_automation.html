@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+
+{% block title %}Section-wise Automation - SuiteSync{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4">
+            <i class="bi bi-bar-chart-line"></i> Section-wise Automation Statistics
+        </h1>
+    </div>
+</div>
+
+<!-- Summary Cards -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card text-white bg-primary">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-title">Total Sections</h6>
+                        <h2 class="mb-0" id="total-sections">-</h2>
+                    </div>
+                    <div class="fs-1">
+                        <i class="bi bi-folder"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-success">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-title">Fully Automated</h6>
+                        <h2 class="mb-0" id="fully-automated">-</h2>
+                    </div>
+                    <div class="fs-1">
+                        <i class="bi bi-check-circle"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-warning">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-title">Partially Automated</h6>
+                        <h2 class="mb-0" id="partially-automated">-</h2>
+                    </div>
+                    <div class="fs-1">
+                        <i class="bi bi-exclamation-triangle"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-info">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-title">Avg Automation %</h6>
+                        <h2 class="mb-0" id="avg-automation">-</h2>
+                    </div>
+                    <div class="fs-1">
+                        <i class="bi bi-speedometer"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="row mb-3">
+    <div class="col-md-4">
+        <input type="text" class="form-control" id="search-input" placeholder="Search sections...">
+    </div>
+    <div class="col-md-3">
+        <select class="form-select" id="suite-filter">
+            <option value="">All Suites</option>
+        </select>
+    </div>
+    <div class="col-md-3">
+        <select class="form-select" id="automation-filter">
+            <option value="">All Automation Levels</option>
+            <option value="high">High (≥80%)</option>
+            <option value="medium">Medium (50-79%)</option>
+            <option value="low">Low (30-49%)</option>
+            <option value="critical">Critical (<30%)</option>
+        </select>
+    </div>
+    <div class="col-md-2">
+        <button class="btn btn-secondary w-100" id="clear-filters-btn">
+            <i class="bi bi-x-circle"></i> Clear Filters
+        </button>
+    </div>
+</div>
+
+<!-- Statistics Table -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="bi bi-table"></i> Section Automation Details
+                </h5>
+                <div>
+                    <button class="btn btn-sm btn-outline-primary" id="export-btn">
+                        <i class="bi bi-download"></i> Export CSV
+                    </button>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="sortable" data-sort="section_name">
+                                    Section Name <i class="bi bi-arrow-down-up"></i>
+                                </th>
+                                <th class="sortable" data-sort="suite_name">
+                                    Suite <i class="bi bi-arrow-down-up"></i>
+                                </th>
+                                <th class="sortable text-center" data-sort="total_cases">
+                                    Total Cases <i class="bi bi-arrow-down-up"></i>
+                                </th>
+                                <th class="sortable text-center" data-sort="automated_count">
+                                    Automated <i class="bi bi-arrow-down-up"></i>
+                                </th>
+                                <th class="text-center">Manual</th>
+                                <th class="text-center">To Be Automated</th>
+                                <th class="sortable text-center" data-sort="automation_percentage">
+                                    Automation % <i class="bi bi-arrow-down-up"></i>
+                                </th>
+                                <th class="text-center">Progress</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sections-tbody">
+                            <tr>
+                                <td colspan="8" class="text-center">
+                                    <div class="spinner-border text-primary" role="status">
+                                        <span class="visually-hidden">Loading...</span>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Loading Indicator -->
+<div id="loading-overlay" style="display: none;">
+    <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">Loading...</span>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .progress {
+        height: 25px;
+    }
+
+    .sortable {
+        cursor: pointer;
+        user-select: none;
+    }
+
+    .sortable:hover {
+        background-color: rgba(0, 0, 0, 0.05);
+    }
+
+    .automation-badge {
+        font-size: 1.1rem;
+        padding: 0.5rem 0.75rem;
+        font-weight: 600;
+    }
+
+    #loading-overlay {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 9999;
+    }
+
+    .section-row:hover {
+        background-color: rgba(13, 110, 253, 0.05);
+        cursor: pointer;
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/section_automation.js') }}"></script>
+{% endblock %}

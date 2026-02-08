@@ -343,16 +343,30 @@ def get_testrail_stats():
     """Get TestRail cases statistics."""
     from sqlalchemy import func
 
-    total_cases = TestRailCase.query.count()
+    # Get section_id filter parameter
+    section_id = request.args.get('section_id', type=str)
 
-    # Get unique sections count
-    unique_sections = db.session.query(func.count(func.distinct(TestRailCase.section_id))).scalar()
+    # Build base query
+    query = TestRailCase.query
 
-    # Get unique suites count
-    unique_suites = db.session.query(func.count(func.distinct(TestRailCase.suite_id))).scalar()
+    # Apply section filter if provided
+    if section_id:
+        section_ids = [sid.strip() for sid in section_id.split(',') if sid.strip()]
+        if len(section_ids) == 1:
+            query = query.filter(TestRailCase.section_id == section_ids[0])
+        elif len(section_ids) > 1:
+            query = query.filter(TestRailCase.section_id.in_(section_ids))
+
+    total_cases = query.count()
+
+    # Get unique sections count (from filtered results)
+    unique_sections = db.session.query(func.count(func.distinct(TestRailCase.section_id))).select_from(query.subquery()).scalar()
+
+    # Get unique suites count (from filtered results)
+    unique_suites = db.session.query(func.count(func.distinct(TestRailCase.suite_id))).select_from(query.subquery()).scalar()
 
     # Get cases by priority
-    priorities = db.session.query(
+    priorities = query.with_entities(
         TestRailCase.priority_id,
         func.count(TestRailCase.id)
     ).group_by(TestRailCase.priority_id).all()
@@ -360,7 +374,7 @@ def get_testrail_stats():
     priority_breakdown = {str(p[0]): p[1] for p in priorities if p[0]}
 
     # Get cases by type
-    types = db.session.query(
+    types = query.with_entities(
         TestRailCase.type_id,
         func.count(TestRailCase.id)
     ).group_by(TestRailCase.type_id).all()
@@ -378,8 +392,8 @@ def get_testrail_stats():
         'null': 0  # No status set
     }
 
-    # Query all cases with custom_fields
-    cases_with_custom_fields = TestRailCase.query.filter(TestRailCase.custom_fields.isnot(None)).all()
+    # Query filtered cases with custom_fields
+    cases_with_custom_fields = query.filter(TestRailCase.custom_fields.isnot(None)).all()
 
     for case in cases_with_custom_fields:
         if case.custom_fields and 'custom_automation_status' in case.custom_fields:
@@ -391,9 +405,15 @@ def get_testrail_stats():
         else:
             automation_status_breakdown['null'] += 1
 
-    # Count cases without custom_fields at all
-    cases_without_custom_fields = TestRailCase.query.filter(TestRailCase.custom_fields.is_(None)).count()
+    # Count cases without custom_fields at all (from filtered query)
+    cases_without_custom_fields = query.filter(TestRailCase.custom_fields.is_(None)).count()
     automation_status_breakdown['null'] += cases_without_custom_fields
+
+    # Calculate automation percentage
+    automated_count = automation_status_breakdown.get('4', 0)  # Status 4 = Automated
+    automation_percentage = 0
+    if total_cases > 0:
+        automation_percentage = round((automated_count / total_cases) * 100, 1)
 
     return jsonify({
         'total_cases': total_cases,
@@ -401,8 +421,100 @@ def get_testrail_stats():
         'unique_suites': unique_suites,
         'priority_breakdown': priority_breakdown,
         'type_breakdown': type_breakdown,
-        'automation_status_breakdown': automation_status_breakdown
+        'automation_status_breakdown': automation_status_breakdown,
+        'automated_count': automated_count,
+        'automation_percentage': automation_percentage
     })
+
+
+@api_bp.route('/testrail/section-automation', methods=['GET'])
+def get_section_automation_stats():
+    """Get automation statistics for each section."""
+    from sqlalchemy import func, case as sql_case
+    import time
+
+    start_time = time.time()
+
+    try:
+        logger.info("[Section Automation] Starting to fetch section automation stats")
+
+        # Get all cases with their automation status in a single query
+        all_cases = TestRailCase.query.filter(
+            TestRailCase.section_id.isnot(None)
+        ).all()
+
+        logger.info(f"[Section Automation] Fetched {len(all_cases)} cases in {time.time() - start_time:.2f}s")
+
+        # Build section stats dictionary
+        section_map = {}
+
+        for case in all_cases:
+            section_id = case.section_id
+
+            if section_id not in section_map:
+                section_map[section_id] = {
+                    'section_id': section_id,
+                    'section_name': case.section_name or f"Section {section_id}",
+                    'suite_id': case.suite_id,
+                    'suite_name': case.suite_name or f"Suite {case.suite_id}",
+                    'total_cases': 0,
+                    'automated_count': 0,
+                    'manual_count': 0,
+                    'to_be_automated_count': 0,
+                    'will_not_automate_count': 0,
+                    'other_count': 0
+                }
+
+            section_map[section_id]['total_cases'] += 1
+
+            # Count automation status
+            if case.custom_fields and 'custom_automation_status' in case.custom_fields:
+                status = str(case.custom_fields['custom_automation_status'])
+                if status == '4':  # Automated
+                    section_map[section_id]['automated_count'] += 1
+                elif status == '1':  # Manual
+                    section_map[section_id]['manual_count'] += 1
+                elif status == '5':  # To Be Automated
+                    section_map[section_id]['to_be_automated_count'] += 1
+                elif status == '3':  # Will Not Automate
+                    section_map[section_id]['will_not_automate_count'] += 1
+                else:
+                    section_map[section_id]['other_count'] += 1
+            else:
+                section_map[section_id]['other_count'] += 1
+
+        # Calculate automation percentages
+        section_stats = []
+        for section_data in section_map.values():
+            total_cases = section_data['total_cases']
+            automated_count = section_data['automated_count']
+
+            automation_percentage = 0
+            if total_cases > 0:
+                automation_percentage = round((automated_count / total_cases) * 100, 1)
+
+            section_data['automation_percentage'] = automation_percentage
+            section_stats.append(section_data)
+
+        # Sort by automation percentage (descending)
+        section_stats.sort(key=lambda x: x['automation_percentage'], reverse=True)
+
+        elapsed = time.time() - start_time
+        logger.info(f"[Section Automation] Completed in {elapsed:.2f}s - {len(section_stats)} sections")
+
+        return jsonify({
+            'status': 'success',
+            'sections': section_stats,
+            'total_sections': len(section_stats)
+        })
+
+    except Exception as e:
+        logger.error(f"Error fetching section automation stats: {e}", exc_info=True)
+        return jsonify({
+            'status': 'error',
+            'message': str(e),
+            'sections': []
+        }), 500
 
 
 @api_bp.route('/testrail/filters', methods=['GET'])

@@ -33,6 +33,12 @@ def testrail():
     return render_template('testrail.html')
 
 
+@web_bp.route('/section-automation')
+def section_automation():
+    """Section-wise automation statistics page."""
+    return render_template('section_automation.html')
+
+
 @web_bp.route('/test-validation')
 def test_validation():
     """Test validation debug page."""

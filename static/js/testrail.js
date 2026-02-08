@@ -127,6 +127,7 @@ function setupSectionCheckboxFilter() {
             currentFilters.section_id = [];
             updateSectionFilterLabel();
             currentPage = 1;
+            loadTestrailStats([]); // Reload stats with no filters
             loadTestrailCases();
         }
     });
@@ -149,6 +150,7 @@ function setupSectionCheckboxFilter() {
             currentFilters.section_id = checkedSections;
             updateSectionFilterLabel();
             currentPage = 1;
+            loadTestrailStats(checkedSections); // Reload stats with selected sections
             loadTestrailCases();
         }
     });
@@ -181,29 +183,52 @@ function setupSearch() {
     });
 }
 
-async function loadTestrailStats() {
+async function loadTestrailStats(sectionIds = []) {
     try {
-        const data = await apiCall('/testrail/stats');
+        // Build query parameters
+        let params = '';
+        if (sectionIds && sectionIds.length > 0) {
+            params = `?section_id=${sectionIds.join(',')}`;
+        }
+
+        const data = await apiCall(`/testrail/stats${params}`);
 
         document.getElementById('total-cases').textContent = data.total_cases || 0;
         document.getElementById('unique-sections').textContent = data.unique_sections || 0;
         document.getElementById('unique-suites').textContent = data.unique_suites || 0;
 
-        // Get last sync time from sync status
-        try {
-            const syncStatus = await apiCall('/sync/status');
-            const lastSync = new Date(syncStatus.completed_at || syncStatus.started_at);
-            document.getElementById('last-sync').textContent = lastSync.toLocaleDateString();
-        } catch (e) {
-            document.getElementById('last-sync').textContent = 'N/A';
-        }
+        // Display automation percentage
+        const automationPercentage = data.automation_percentage || 0;
+        document.getElementById('automation-percentage').textContent = `${automationPercentage}%`;
+
+        // Optionally change card color based on percentage
+        updateAutomationCardColor(automationPercentage);
+
     } catch (error) {
         console.error('Error loading TestRail stats:', error);
         // Set default values on error
         document.getElementById('total-cases').textContent = '0';
         document.getElementById('unique-sections').textContent = '0';
         document.getElementById('unique-suites').textContent = '0';
-        document.getElementById('last-sync').textContent = 'Error';
+        document.getElementById('automation-percentage').textContent = '0%';
+    }
+}
+
+function updateAutomationCardColor(percentage) {
+    const card = document.getElementById('automation-percentage').closest('.card');
+
+    // Remove existing color classes
+    card.classList.remove('bg-danger', 'bg-warning', 'bg-success', 'bg-info');
+
+    // Add appropriate color based on percentage
+    if (percentage >= 80) {
+        card.classList.add('bg-success');
+    } else if (percentage >= 50) {
+        card.classList.add('bg-info');
+    } else if (percentage >= 30) {
+        card.classList.add('bg-warning');
+    } else {
+        card.classList.add('bg-danger');
     }
 }
 
@@ -503,6 +528,7 @@ function clearFilters() {
     document.getElementById('automation-status-filter').value = '';
     document.getElementById('search-input').value = '';
 
-    // Reload cases
+    // Reload stats and cases
+    loadTestrailStats([]);
     loadTestrailCases();
 }
