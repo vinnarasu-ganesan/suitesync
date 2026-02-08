@@ -5,7 +5,7 @@ let currentSortBy = 'case_id';
 let currentSortOrder = 'asc';
 let currentFilters = {
     suite_id: '',
-    section_id: '',
+    section_id: [],
     type_id: '',
     priority_id: '',
     automation_status: '',
@@ -39,13 +39,26 @@ async function loadFilterOptions() {
             suiteFilter.appendChild(option);
         });
 
-        // Populate section filter
-        const sectionFilter = document.getElementById('section-filter');
-        data.sections.forEach(section => {
-            const option = document.createElement('option');
-            option.value = section.value;
-            option.textContent = section.label;
-            sectionFilter.appendChild(option);
+        // Populate section filter with checkboxes
+        const sectionContainer = document.getElementById('section-checkboxes-container');
+        data.sections.forEach((section, index) => {
+            const checkboxDiv = document.createElement('div');
+            checkboxDiv.className = 'form-check';
+
+            const checkbox = document.createElement('input');
+            checkbox.className = 'form-check-input section-checkbox';
+            checkbox.type = 'checkbox';
+            checkbox.value = section.value;
+            checkbox.id = `section-${index}`;
+
+            const label = document.createElement('label');
+            label.className = 'form-check-label';
+            label.htmlFor = `section-${index}`;
+            label.textContent = section.label;
+
+            checkboxDiv.appendChild(checkbox);
+            checkboxDiv.appendChild(label);
+            sectionContainer.appendChild(checkboxDiv);
         });
 
         // Populate type filter
@@ -69,12 +82,8 @@ function setupFilters() {
         loadTestrailCases();
     });
 
-    // Section filter
-    document.getElementById('section-filter').addEventListener('change', (e) => {
-        currentFilters.section_id = e.target.value;
-        currentPage = 1;
-        loadTestrailCases();
-    });
+    // Section filter - checkbox handling
+    setupSectionCheckboxFilter();
 
     // Type filter
     document.getElementById('type-filter').addEventListener('change', (e) => {
@@ -96,6 +105,66 @@ function setupFilters() {
         currentPage = 1;
         loadTestrailCases();
     });
+}
+
+function setupSectionCheckboxFilter() {
+    const dropdown = document.getElementById('section-filter-dropdown');
+    const allCheckbox = document.getElementById('section-all');
+
+    // Prevent dropdown from closing when clicking inside
+    dropdown.addEventListener('click', (e) => {
+        e.stopPropagation();
+    });
+
+    // Handle "All Sections" checkbox
+    allCheckbox.addEventListener('change', (e) => {
+        const sectionCheckboxes = document.querySelectorAll('.section-checkbox');
+        sectionCheckboxes.forEach(cb => {
+            cb.checked = false;
+        });
+
+        if (e.target.checked) {
+            currentFilters.section_id = [];
+            updateSectionFilterLabel();
+            currentPage = 1;
+            loadTestrailCases();
+        }
+    });
+
+    // Handle individual section checkboxes
+    document.addEventListener('change', (e) => {
+        if (e.target.classList.contains('section-checkbox')) {
+            // Uncheck "All" when any specific section is selected
+            allCheckbox.checked = false;
+
+            // Get all checked section values
+            const checkedSections = Array.from(document.querySelectorAll('.section-checkbox:checked'))
+                .map(cb => cb.value);
+
+            // If no sections are checked, check "All" automatically
+            if (checkedSections.length === 0) {
+                allCheckbox.checked = true;
+            }
+
+            currentFilters.section_id = checkedSections;
+            updateSectionFilterLabel();
+            currentPage = 1;
+            loadTestrailCases();
+        }
+    });
+}
+
+function updateSectionFilterLabel() {
+    const label = document.getElementById('section-filter-label');
+    const checkedSections = document.querySelectorAll('.section-checkbox:checked');
+
+    if (checkedSections.length === 0) {
+        label.textContent = 'All Sections';
+    } else if (checkedSections.length === 1) {
+        label.textContent = checkedSections[0].nextElementSibling.textContent;
+    } else {
+        label.textContent = `${checkedSections.length} Sections Selected`;
+    }
 }
 
 function setupSearch() {
@@ -150,7 +219,9 @@ async function loadTestrailCases() {
         let params = `page=${currentPage}&per_page=20&sort_by=${currentSortBy}&sort_order=${currentSortOrder}`;
 
         if (currentFilters.suite_id) params += `&suite_id=${currentFilters.suite_id}`;
-        if (currentFilters.section_id) params += `&section_id=${currentFilters.section_id}`;
+        if (currentFilters.section_id && currentFilters.section_id.length > 0) {
+            params += `&section_id=${currentFilters.section_id.join(',')}`;
+        }
         if (currentFilters.type_id) params += `&type_id=${currentFilters.type_id}`;
         if (currentFilters.priority_id) params += `&priority_id=${currentFilters.priority_id}`;
         if (currentFilters.automation_status) params += `&automation_status=${currentFilters.automation_status}`;
@@ -335,7 +406,8 @@ function updateFilterSummary(totalCount) {
     const filterDescription = document.getElementById('filter-description');
 
     // Check if any filters are active
-    const hasFilters = currentFilters.suite_id || currentFilters.section_id ||
+    const hasFilters = currentFilters.suite_id ||
+                       (currentFilters.section_id && currentFilters.section_id.length > 0) ||
                        currentFilters.type_id || currentFilters.priority_id ||
                        currentFilters.automation_status || currentFilters.search;
 
@@ -350,10 +422,17 @@ function updateFilterSummary(totalCount) {
             filters.push(`Suite: <span class="badge bg-primary">${selectedOption.text}</span>`);
         }
 
-        if (currentFilters.section_id) {
-            const sectionSelect = document.getElementById('section-filter');
-            const selectedOption = sectionSelect.options[sectionSelect.selectedIndex];
-            filters.push(`Section: <span class="badge bg-primary">${selectedOption.text}</span>`);
+        if (currentFilters.section_id && currentFilters.section_id.length > 0) {
+            const selectedSections = [];
+            currentFilters.section_id.forEach(sectionId => {
+                const checkbox = document.querySelector(`.section-checkbox[value="${sectionId}"]`);
+                if (checkbox && checkbox.nextElementSibling) {
+                    selectedSections.push(`<span class="badge bg-primary">${checkbox.nextElementSibling.textContent}</span>`);
+                }
+            });
+            if (selectedSections.length > 0) {
+                filters.push(`Section${currentFilters.section_id.length > 1 ? 's' : ''}: ${selectedSections.join(' ')}`);
+            }
         }
 
         if (currentFilters.type_id) {
@@ -403,7 +482,7 @@ function updateFilterSummary(totalCount) {
 function clearFilters() {
     currentFilters = {
         suite_id: '',
-        section_id: '',
+        section_id: [],
         type_id: '',
         priority_id: '',
         automation_status: '',
@@ -413,7 +492,12 @@ function clearFilters() {
 
     // Reset UI elements
     document.getElementById('suite-filter').value = '';
-    document.getElementById('section-filter').value = '';
+
+    // Reset section checkboxes
+    document.querySelectorAll('.section-checkbox').forEach(cb => cb.checked = false);
+    document.getElementById('section-all').checked = true;
+    updateSectionFilterLabel();
+
     document.getElementById('type-filter').value = '';
     document.getElementById('priority-filter').value = '';
     document.getElementById('automation-status-filter').value = '';

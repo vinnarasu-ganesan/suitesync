@@ -184,7 +184,12 @@ def get_testrail_cases():
         if suite_id:
             query = query.filter(TestRailCase.suite_id == suite_id)
         if section_id:
-            query = query.filter(TestRailCase.section_id == section_id)
+            # Handle multiple section IDs (comma-separated)
+            section_ids = [sid.strip() for sid in section_id.split(',') if sid.strip()]
+            if len(section_ids) == 1:
+                query = query.filter(TestRailCase.section_id == section_ids[0])
+            elif len(section_ids) > 1:
+                query = query.filter(TestRailCase.section_id.in_(section_ids))
         if type_id:
             query = query.filter(TestRailCase.type_id == type_id)
         if priority_id:

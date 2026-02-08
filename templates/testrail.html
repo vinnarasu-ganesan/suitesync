@@ -13,7 +13,7 @@
 
 <!-- Summary Statistics -->
 <div class="row mb-4">
-    <div class="col-md-3">
+    <div class="col-md-4">
         <div class="card text-white bg-primary">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center">
@@ -28,7 +28,7 @@
             </div>
         </div>
     </div>
-    <div class="col-md-3">
+    <div class="col-md-4">
         <div class="card text-white bg-success">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center">
@@ -43,7 +43,7 @@
             </div>
         </div>
     </div>
-    <div class="col-md-3">
+    <div class="col-md-4">
         <div class="card text-white bg-info">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center">
@@ -58,25 +58,10 @@
             </div>
         </div>
     </div>
-    <div class="col-md-3">
-        <div class="card text-white bg-secondary">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center">
-                    <div>
-                        <h6 class="card-title">Last Updated</h6>
-                        <h6 class="mb-0" id="last-sync">-</h6>
-                    </div>
-                    <div class="fs-1">
-                        <i class="bi bi-clock"></i>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
 </div>
 
 <div class="row mb-3">
-    <div class="col-md-3">
+     <div class="col-md-3">
         <input type="text" class="form-control" id="search-input" placeholder="Search TestRail cases...">
     </div>
     <div class="col-md-2">
@@ -85,9 +70,22 @@
         </select>
     </div>
     <div class="col-md-2">
-        <select class="form-select" id="section-filter">
-            <option value="">All Sections</option>
-        </select>
+        <div class="dropdown">
+            <button class="btn btn-outline-secondary dropdown-toggle w-100 text-start" type="button" id="section-filter-btn" data-bs-toggle="dropdown" aria-expanded="false">
+                <span id="section-filter-label">All Sections</span>
+            </button>
+            <div class="dropdown-menu p-2" id="section-filter-dropdown" style="min-width: 300px; max-height: 400px; overflow-y: auto;">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" value="" id="section-all" checked>
+                    <label class="form-check-label" for="section-all">
+                        All Sections
+                    </label>
+                </div>
+                <hr class="my-2">
+                <!-- Section checkboxes will be dynamically added here -->
+                <div id="section-checkboxes-container"></div>
+            </div>
+        </div>
     </div>
     <div class="col-md-2">
         <select class="form-select" id="type-filter">

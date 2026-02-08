@@ -48,6 +48,48 @@ body {
     background-color: rgba(13, 110, 253, 0.05);
 }
 
+/* Checkbox Dropdown */
+.dropdown-menu.show {
+    display: block;
+}
+
+.dropdown-menu .form-check {
+    margin-bottom: 0.5rem;
+    padding-left: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.dropdown-menu .form-check:last-child {
+    margin-bottom: 0;
+}
+
+.dropdown-menu .form-check-label {
+    cursor: pointer;
+    user-select: none;
+    width: 100%;
+    margin-bottom: 0;
+    padding-top: 0;
+    display: inline-block;
+    line-height: 1.5;
+}
+
+.dropdown-menu .form-check-input {
+    cursor: pointer;
+    margin-top: 0;
+    flex-shrink: 0;
+    position: static;
+    margin-left: 0;
+}
+
+#section-filter-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: inline-block;
+    max-width: calc(100% - 20px);
+}
 /* Code blocks */
 code {
     padding: 0.25rem 0.5rem;
