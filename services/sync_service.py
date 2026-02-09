@@ -165,9 +165,13 @@ class SyncService:
 
             logger.info(f"Retrieved {len(cases)} cases from TestRail")
 
+            # Track current case IDs from TestRail
+            current_case_ids = set()
+
             # Update or create TestRail cases in database
             for case in cases:
                 case_id = f"C{case['id']}"
+                current_case_ids.add(case_id)
                 section_id = str(case.get('section_id', ''))
                 section_name = sections_map.get(section_id, f'Section {section_id}')
 
@@ -203,8 +207,17 @@ class SyncService:
                     )
                     db.session.add(testrail_case)
 
+            # Delete TestRail cases that no longer exist in TestRail
+            all_db_cases = TestRailCase.query.all()
+            deleted_count = 0
+            for db_case in all_db_cases:
+                if db_case.case_id not in current_case_ids:
+                    logger.info(f"Deleting case {db_case.case_id} ({db_case.title}) - no longer exists in TestRail")
+                    db.session.delete(db_case)
+                    deleted_count += 1
+
             db.session.commit()
-            logger.info("TestRail cases synced successfully")
+            logger.info(f"TestRail cases synced successfully. Deleted {deleted_count} cases that no longer exist in TestRail.")
 
         except Exception as e:
             logger.error(f"Error syncing with TestRail: {e}")
