@@ -342,10 +342,10 @@ function getPriorityBadge(priorityId) {
     if (!priorityId) return '<span class="text-muted">N/A</span>';
 
     const priorities = {
-        '1': '<span class="badge bg-danger">Critical</span>',
-        '2': '<span class="badge bg-warning">High</span>',
-        '3': '<span class="badge bg-info">Medium</span>',
-        '4': '<span class="badge bg-secondary">Low</span>'
+        '1': '<span class="badge bg-danger">P3 - Critical</span>',
+        '2': '<span class="badge bg-secondary">P2 - Low</span>',
+        '3': '<span class="badge bg-info">P1 - Medium</span>',
+        '4': '<span class="badge bg-warning">P0 - High</span>'
     };
 
     return priorities[priorityId] || `<span class="badge bg-secondary">${priorityId}</span>`;
@@ -468,10 +468,10 @@ function updateFilterSummary(totalCount) {
 
         if (currentFilters.priority_id) {
             const priorityLabels = {
-                '1': 'Critical',
-                '2': 'High',
-                '3': 'Medium',
-                '4': 'Low'
+                '1': 'P3 - Critical',
+                '2': 'P0 - High',
+                '3': 'P1 - Medium',
+                '4': 'P2 - Low'
             };
             filters.push(`Priority: <span class="badge bg-warning text-dark">${priorityLabels[currentFilters.priority_id]}</span>`);
         }
