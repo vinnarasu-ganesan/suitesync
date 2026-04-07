@@ -340,16 +340,23 @@ def get_testrail_cases():
 
 @api_bp.route('/testrail/stats', methods=['GET'])
 def get_testrail_stats():
-    """Get TestRail cases statistics."""
+    """Get TestRail cases statistics, respecting all active filters."""
     from sqlalchemy import func
 
-    # Get section_id filter parameter
-    section_id = request.args.get('section_id', type=str)
+    # Accept the same filter params that /testrail/cases supports
+    suite_id          = request.args.get('suite_id',          type=str)
+    section_id        = request.args.get('section_id',        type=str)
+    type_id           = request.args.get('type_id',           type=int)
+    priority_id       = request.args.get('priority_id',       type=int)
+    automation_status = request.args.get('automation_status', type=str)
+    search            = request.args.get('search',            type=str)
 
-    # Build base query
+    # ── SQL-filterable conditions ──────────────────────────────────────────
     query = TestRailCase.query
 
-    # Apply section filter if provided
+    if suite_id:
+        query = query.filter(TestRailCase.suite_id == suite_id)
+
     if section_id:
         section_ids = [sid.strip() for sid in section_id.split(',') if sid.strip()]
         if len(section_ids) == 1:
@@ -357,31 +364,37 @@ def get_testrail_stats():
         elif len(section_ids) > 1:
             query = query.filter(TestRailCase.section_id.in_(section_ids))
 
-    total_cases = query.count()
+    if type_id:
+        query = query.filter(TestRailCase.type_id == type_id)
 
-    # Get unique sections count (from filtered results)
-    unique_sections = db.session.query(func.count(func.distinct(TestRailCase.section_id))).select_from(query.subquery()).scalar()
+    if priority_id:
+        query = query.filter(TestRailCase.priority_id == priority_id)
 
-    # Get unique suites count (from filtered results)
-    unique_suites = db.session.query(func.count(func.distinct(TestRailCase.suite_id))).select_from(query.subquery()).scalar()
+    if search:
+        search_term = f"%{search}%"
+        query = query.filter(
+            db.or_(
+                TestRailCase.case_id.ilike(search_term),
+                TestRailCase.title.ilike(search_term)
+            )
+        )
 
-    # Get cases by priority
-    priorities = query.with_entities(
-        TestRailCase.priority_id,
-        func.count(TestRailCase.id)
-    ).group_by(TestRailCase.priority_id).all()
+    # ── automation_status lives inside JSON – filter in Python ────────────
+    all_cases = query.all()
+    if automation_status:
+        all_cases = [
+            c for c in all_cases
+            if c.custom_fields and
+               str(c.custom_fields.get('custom_automation_status', '')) == automation_status
+        ]
 
-    priority_breakdown = {str(p[0]): p[1] for p in priorities if p[0]}
+    # ── Compute aggregates from the fully-filtered list ───────────────────
+    total_cases     = len(all_cases)
+    unique_sections = len({c.section_id for c in all_cases if c.section_id})
+    unique_suites   = len({c.suite_id   for c in all_cases if c.suite_id})
 
-    # Get cases by type
-    types = query.with_entities(
-        TestRailCase.type_id,
-        func.count(TestRailCase.id)
-    ).group_by(TestRailCase.type_id).all()
-
-    type_breakdown = {str(t[0]): t[1] for t in types if t[0]}
-
-    # Get cases by automation status from custom_fields
+    priority_breakdown = {}
+    type_breakdown     = {}
     automation_status_breakdown = {
         '0': 0,  # Deleted
         '1': 0,  # Manual
@@ -389,13 +402,16 @@ def get_testrail_stats():
         '3': 0,  # Will Not Automate
         '4': 0,  # Automated
         '5': 0,  # To Be Automated
-        'null': 0  # No status set
+        'null': 0
     }
 
-    # Query filtered cases with custom_fields
-    cases_with_custom_fields = query.filter(TestRailCase.custom_fields.isnot(None)).all()
-
-    for case in cases_with_custom_fields:
+    for case in all_cases:
+        if case.priority_id:
+            k = str(case.priority_id)
+            priority_breakdown[k] = priority_breakdown.get(k, 0) + 1
+        if case.type_id:
+            k = str(case.type_id)
+            type_breakdown[k] = type_breakdown.get(k, 0) + 1
         if case.custom_fields and 'custom_automation_status' in case.custom_fields:
             status = str(case.custom_fields['custom_automation_status'])
             if status in automation_status_breakdown:
@@ -405,15 +421,8 @@ def get_testrail_stats():
         else:
             automation_status_breakdown['null'] += 1
 
-    # Count cases without custom_fields at all (from filtered query)
-    cases_without_custom_fields = query.filter(TestRailCase.custom_fields.is_(None)).count()
-    automation_status_breakdown['null'] += cases_without_custom_fields
-
-    # Calculate automation percentage
-    automated_count = automation_status_breakdown.get('4', 0)  # Status 4 = Automated
-    automation_percentage = 0
-    if total_cases > 0:
-        automation_percentage = round((automated_count / total_cases) * 100, 1)
+    automated_count       = automation_status_breakdown.get('4', 0)
+    automation_percentage = round((automated_count / total_cases) * 100, 1) if total_cases > 0 else 0
 
     return jsonify({
         'total_cases': total_cases,
@@ -517,28 +526,91 @@ def get_section_automation_stats():
         }), 500
 
 
+@api_bp.route('/testrail/stats/by-suite', methods=['GET'])
+def get_testrail_stats_by_suite():
+    """Get TestRail automation status breakdown grouped by suite."""
+    try:
+        # Get all distinct suites stored in the DB
+        suites_query = db.session.query(
+            TestRailCase.suite_id,
+            TestRailCase.suite_name
+        ).distinct().filter(TestRailCase.suite_id.isnot(None)).all()
+
+        result = []
+        for suite_id, suite_name in suites_query:
+            cases = TestRailCase.query.filter_by(suite_id=suite_id).all()
+            total_cases = len(cases)
+
+            breakdown = {'0': 0, '1': 0, '2': 0, '3': 0, '4': 0, '5': 0, 'null': 0}
+
+            for case in cases:
+                if case.custom_fields and 'custom_automation_status' in case.custom_fields:
+                    status = str(case.custom_fields['custom_automation_status'])
+                    if status in breakdown:
+                        breakdown[status] += 1
+                    else:
+                        breakdown['null'] += 1
+                else:
+                    breakdown['null'] += 1
+
+            automated_count = breakdown.get('4', 0)
+            automation_pct = round((automated_count / total_cases) * 100, 1) if total_cases > 0 else 0
+
+            result.append({
+                'suite_id': suite_id,
+                'suite_name': suite_name or f'Suite {suite_id}',
+                'total_cases': total_cases,
+                'automation_status_breakdown': breakdown,
+                'automated_count': automated_count,
+                'automation_percentage': automation_pct
+            })
+
+        # Sort by suite_id for a stable order
+        result.sort(key=lambda x: x['suite_id'])
+
+        return jsonify({'suites': result})
+
+    except Exception as e:
+        logger.error(f"Error fetching TestRail stats by suite: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': str(e), 'suites': []}), 500
+
+
 @api_bp.route('/testrail/filters', methods=['GET'])
 def get_testrail_filters():
-    """Get unique values for TestRail filters."""
+    """Get unique values for TestRail filters.
+
+    Accepts an optional ``suite_id`` query param; when supplied, the sections
+    list is scoped to that suite only so the UI can keep them in sync.
+    """
     from sqlalchemy import func
 
-    # Get unique suite IDs with their names
+    suite_id = request.args.get('suite_id', type=str)
+
+    # Suites are always returned in full (never filtered)
     suites = db.session.query(
         TestRailCase.suite_id,
         TestRailCase.suite_name
     ).distinct().filter(TestRailCase.suite_id.isnot(None)).all()
     suite_options = [{'value': s[0], 'label': s[1] if s[1] else f'Suite {s[0]}'} for s in suites]
 
-    # Get unique section IDs with their names and counts
-    sections = db.session.query(
+    # Sections – optionally scoped to the selected suite
+    sections_query = db.session.query(
         TestRailCase.section_id,
         TestRailCase.section_name,
         func.count(TestRailCase.id)
-    ).filter(TestRailCase.section_id.isnot(None)).group_by(
+    ).filter(TestRailCase.section_id.isnot(None))
+
+    if suite_id:
+        sections_query = sections_query.filter(TestRailCase.suite_id == suite_id)
+
+    sections = sections_query.group_by(
         TestRailCase.section_id,
         TestRailCase.section_name
     ).order_by(TestRailCase.section_name).all()
-    section_options = [{'value': s[0], 'label': f'{s[1] if s[1] else "Section " + s[0]} ({s[2]} cases)'} for s in sections]
+    section_options = [
+        {'value': s[0], 'label': f'{s[1] if s[1] else "Section " + s[0]} ({s[2]} cases)'}
+        for s in sections
+    ]
 
     # Get unique type IDs
     types = db.session.query(
@@ -698,12 +770,13 @@ def validate_testrail_ids():
     from datetime import datetime
 
     try:
-        # Initialize TestRail service
+        # Initialize TestRail service (uses all configured suites)
+        suite_ids = current_app.config.get('TESTRAIL_SUITE_IDS') or [current_app.config.get('TESTRAIL_SUITE_ID')]
         tr_service = TestRailService(
             current_app.config.get('TESTRAIL_URL'),
             current_app.config.get('TESTRAIL_EMAIL'),
             current_app.config.get('TESTRAIL_API_KEY'),
-            current_app.config.get('TESTRAIL_SUITE_ID')
+            suite_ids
         )
 
         # Get all TestRail case IDs from database

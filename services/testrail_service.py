@@ -8,11 +8,20 @@ logger = logging.getLogger(__name__)
 class TestRailService:
     """Service for interacting with TestRail API."""
 
-    def __init__(self, url, email, api_key, suite_id):
+    def __init__(self, url, email, api_key, suite_ids):
         self.url = url.rstrip('/')
         self.email = email
         self.api_key = api_key
-        self.suite_id = suite_id
+
+        # Accept a single suite ID (str/int) or a list of suite IDs
+        if isinstance(suite_ids, (list, tuple)):
+            self.suite_ids = [str(sid).strip() for sid in suite_ids if sid]
+        else:
+            self.suite_ids = [str(suite_ids).strip()] if suite_ids else []
+
+        # Primary suite ID – used for single-suite API calls and backward compatibility
+        self.suite_id = self.suite_ids[0] if self.suite_ids else None
+
         self.project_id = None  # Will be fetched from suite
         self.headers = {
             'Content-Type': 'application/json'
@@ -25,7 +34,7 @@ class TestRailService:
         base64_string = base64_bytes.decode('ascii')
         self.headers['Authorization'] = f'Basic {base64_string}'
 
-        # Fetch project_id from suite
+        # Fetch project_id from the primary suite
         self._fetch_project_id_from_suite()
 
     def _make_request(self, method, endpoint, data=None):
@@ -53,7 +62,9 @@ class TestRailService:
             return None
 
     def _fetch_project_id_from_suite(self):
-        """Fetch project_id from the suite."""
+        """Fetch project_id from the primary suite."""
+        if not self.suite_id:
+            return
         try:
             suite = self._make_request('GET', f'get_suite/{self.suite_id}')
             if suite and 'project_id' in suite:
@@ -179,9 +190,10 @@ class TestRailService:
         # Return in the same format as the API
         return all_sections if all_sections else response
 
-    def get_suite(self):
-        """Get suite information."""
-        return self._make_request('GET', f'get_suite/{self.suite_id}')
+    def get_suite(self, suite_id=None):
+        """Get suite information. Defaults to the primary suite."""
+        sid = suite_id or self.suite_id
+        return self._make_request('GET', f'get_suite/{sid}')
 
     def get_suites_for_project(self, project_id):
         """Get all test suites for a project."""

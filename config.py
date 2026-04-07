@@ -29,7 +29,13 @@ class Config:
     TESTRAIL_URL = os.environ.get('TESTRAIL_URL', '')
     TESTRAIL_EMAIL = os.environ.get('TESTRAIL_EMAIL', '')
     TESTRAIL_API_KEY = os.environ.get('TESTRAIL_API_KEY', '')
-    TESTRAIL_SUITE_ID = os.environ.get('TESTRAIL_SUITE_ID', '1')
+
+    # Multi-suite support: TESTRAIL_SUITE_IDS takes a comma-separated list of suite IDs.
+    # Falls back to the legacy TESTRAIL_SUITE_ID for single-suite deployments.
+    _suite_ids_raw = os.environ.get('TESTRAIL_SUITE_IDS') or os.environ.get('TESTRAIL_SUITE_ID', '1')
+    TESTRAIL_SUITE_IDS = [sid.strip() for sid in _suite_ids_raw.split(',') if sid.strip()]
+    # Primary / default suite ID kept for backward compatibility
+    TESTRAIL_SUITE_ID = TESTRAIL_SUITE_IDS[0] if TESTRAIL_SUITE_IDS else '1'
 
     # GitHub Webhook
     GITHUB_WEBHOOK_SECRET = os.environ.get('GITHUB_WEBHOOK_SECRET', '')

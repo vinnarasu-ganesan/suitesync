@@ -22,11 +22,13 @@ class SyncService:
         )
 
         if config.get('TESTRAIL_URL') and config.get('TESTRAIL_EMAIL') and config.get('TESTRAIL_API_KEY'):
+            # Prefer the multi-suite list; fall back to the legacy single-ID key
+            suite_ids = config.get('TESTRAIL_SUITE_IDS') or [config.get('TESTRAIL_SUITE_ID')]
             self.testrail_service = TestRailService(
                 config.get('TESTRAIL_URL'),
                 config.get('TESTRAIL_EMAIL'),
                 config.get('TESTRAIL_API_KEY'),
-                config.get('TESTRAIL_SUITE_ID')
+                suite_ids
             )
         else:
             self.testrail_service = None
@@ -129,65 +131,75 @@ class SyncService:
             return sync_log
 
     def _sync_with_testrail(self):
-        """Sync test information with TestRail."""
+        """Sync test information with TestRail for all configured suites."""
         try:
-            # Get suite information first
-            logger.info("Fetching suite information...")
-            suite_info = self.testrail_service.get_suite()
-            suite_name = suite_info.get('name', f'Suite {self.testrail_service.suite_id}') if suite_info else f'Suite {self.testrail_service.suite_id}'
-            logger.info(f"Suite name: {suite_name}")
+            suite_ids = self.testrail_service.suite_ids
+            logger.info(f"Syncing {len(suite_ids)} TestRail suite(s): {suite_ids}")
 
-            # Get all sections and create a mapping of section_id -> section_name
-            logger.info("Fetching sections...")
-            sections = self.testrail_service.get_sections()
+            for suite_id in suite_ids:
+                self._sync_suite(suite_id)
+
+        except Exception as e:
+            logger.error(f"Error syncing with TestRail: {e}")
+
+    def _sync_suite(self, suite_id):
+        """Sync a single TestRail suite into the database."""
+        try:
+            # --- Suite info ---
+            logger.info(f"[Suite {suite_id}] Fetching suite information...")
+            suite_info = self.testrail_service.get_suite(suite_id)
+            suite_name = (
+                suite_info.get('name', f'Suite {suite_id}') if suite_info else f'Suite {suite_id}'
+            )
+            logger.info(f"[Suite {suite_id}] Suite name: {suite_name}")
+
+            # --- Sections ---
+            logger.info(f"[Suite {suite_id}] Fetching sections...")
+            sections_response = self.testrail_service.get_sections(suite_id)
             sections_map = {}
-            if sections:
-                for section in sections:
-                    section_id = str(section.get('id', ''))
-                    section_name = section.get('name', f'Section {section_id}')
-                    sections_map[section_id] = section_name
-            logger.info(f"Found {len(sections_map)} sections")
+            if sections_response:
+                # get_sections() returns a list directly
+                sections_list = sections_response if isinstance(sections_response, list) else \
+                    sections_response.get('sections', [])
+                for section in sections_list:
+                    sid = str(section.get('id', ''))
+                    sections_map[sid] = section.get('name', f'Section {sid}')
+            logger.info(f"[Suite {suite_id}] Found {len(sections_map)} sections")
 
-            # Get all TestRail cases
-            response = self.testrail_service.get_cases()
+            # --- Cases ---
+            logger.info(f"[Suite {suite_id}] Fetching cases...")
+            response = self.testrail_service.get_cases(suite_id)
             if not response:
-                logger.warning("No cases retrieved from TestRail")
+                logger.warning(f"[Suite {suite_id}] No cases retrieved from TestRail")
                 return
 
-            # Handle paginated response (dict with 'cases' key) or direct list
             if isinstance(response, dict) and 'cases' in response:
                 cases = response['cases']
             elif isinstance(response, list):
                 cases = response
             else:
-                logger.error(f"Unexpected TestRail response format: {type(response)}")
+                logger.error(f"[Suite {suite_id}] Unexpected response format: {type(response)}")
                 return
 
-            logger.info(f"Retrieved {len(cases)} cases from TestRail")
+            logger.info(f"[Suite {suite_id}] Retrieved {len(cases)} cases from TestRail")
 
-            # Track current case IDs from TestRail
+            # Track case IDs fetched for THIS suite (used for cleanup)
             current_case_ids = set()
 
-            # Update or create TestRail cases in database
             for case in cases:
                 case_id = f"C{case['id']}"
                 current_case_ids.add(case_id)
                 section_id = str(case.get('section_id', ''))
                 section_name = sections_map.get(section_id, f'Section {section_id}')
 
-                # Extract all custom fields (fields starting with 'custom_')
-                custom_fields = {}
-                for key, value in case.items():
-                    if key.startswith('custom_'):
-                        custom_fields[key] = value
+                custom_fields = {k: v for k, v in case.items() if k.startswith('custom_')}
 
                 testrail_case = TestRailCase.query.filter_by(case_id=case_id).first()
-
                 if testrail_case:
                     testrail_case.title = case['title']
                     testrail_case.section_id = section_id
                     testrail_case.section_name = section_name
-                    testrail_case.suite_id = str(case.get('suite_id', ''))
+                    testrail_case.suite_id = str(case.get('suite_id', suite_id))
                     testrail_case.suite_name = suite_name
                     testrail_case.type_id = case.get('type_id')
                     testrail_case.priority_id = case.get('priority_id')
@@ -199,7 +211,7 @@ class SyncService:
                         title=case['title'],
                         section_id=section_id,
                         section_name=section_name,
-                        suite_id=str(case.get('suite_id', '')),
+                        suite_id=str(case.get('suite_id', suite_id)),
                         suite_name=suite_name,
                         type_id=case.get('type_id'),
                         priority_id=case.get('priority_id'),
@@ -207,20 +219,26 @@ class SyncService:
                     )
                     db.session.add(testrail_case)
 
-            # Delete TestRail cases that no longer exist in TestRail
-            all_db_cases = TestRailCase.query.all()
+            # --- Per-suite cleanup: only remove cases that belong to THIS suite ---
+            db_cases_for_suite = TestRailCase.query.filter_by(suite_id=str(suite_id)).all()
             deleted_count = 0
-            for db_case in all_db_cases:
+            for db_case in db_cases_for_suite:
                 if db_case.case_id not in current_case_ids:
-                    logger.info(f"Deleting case {db_case.case_id} ({db_case.title}) - no longer exists in TestRail")
+                    logger.info(
+                        f"[Suite {suite_id}] Deleting case {db_case.case_id} "
+                        f"({db_case.title}) – no longer exists in TestRail"
+                    )
                     db.session.delete(db_case)
                     deleted_count += 1
 
             db.session.commit()
-            logger.info(f"TestRail cases synced successfully. Deleted {deleted_count} cases that no longer exist in TestRail.")
+            logger.info(
+                f"[Suite {suite_id}] Sync complete – "
+                f"{len(cases)} cases upserted, {deleted_count} obsolete cases removed."
+            )
 
         except Exception as e:
-            logger.error(f"Error syncing with TestRail: {e}")
+            logger.error(f"[Suite {suite_id}] Error syncing suite: {e}")
 
     def _archive_missing_tests(self, current_tests):
         """Mark tests that are no longer in the repository as archived."""

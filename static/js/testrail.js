@@ -39,27 +39,8 @@ async function loadFilterOptions() {
             suiteFilter.appendChild(option);
         });
 
-        // Populate section filter with checkboxes
-        const sectionContainer = document.getElementById('section-checkboxes-container');
-        data.sections.forEach((section, index) => {
-            const checkboxDiv = document.createElement('div');
-            checkboxDiv.className = 'form-check';
-
-            const checkbox = document.createElement('input');
-            checkbox.className = 'form-check-input section-checkbox';
-            checkbox.type = 'checkbox';
-            checkbox.value = section.value;
-            checkbox.id = `section-${index}`;
-
-            const label = document.createElement('label');
-            label.className = 'form-check-label';
-            label.htmlFor = `section-${index}`;
-            label.textContent = section.label;
-
-            checkboxDiv.appendChild(checkbox);
-            checkboxDiv.appendChild(label);
-            sectionContainer.appendChild(checkboxDiv);
-        });
+        // Populate section filter with checkboxes (all sections on initial load)
+        populateSectionCheckboxes(data.sections);
 
         // Populate type filter
         const typeFilter = document.getElementById('type-filter');
@@ -74,21 +55,91 @@ async function loadFilterOptions() {
     }
 }
 
+/**
+ * Render section checkboxes from a sections array.
+ * Replaces any existing checkboxes inside #section-checkboxes-container.
+ * @param {Array}   sections    - array of {value, label} objects
+ * @param {boolean} allSelected - if true, every checkbox is pre-checked (default: true)
+ */
+function populateSectionCheckboxes(sections, allSelected = true) {
+    const sectionContainer = document.getElementById('section-checkboxes-container');
+    sectionContainer.innerHTML = '';
+
+    if (!sections || sections.length === 0) {
+        sectionContainer.innerHTML = '<div class="text-muted small px-2 py-1">No sections available</div>';
+        return;
+    }
+
+    sections.forEach((section, index) => {
+        const checkboxDiv = document.createElement('div');
+        checkboxDiv.className = 'form-check';
+
+        const checkbox = document.createElement('input');
+        checkbox.className = 'form-check-input section-checkbox';
+        checkbox.type = 'checkbox';
+        checkbox.value = section.value;
+        checkbox.id = `section-${index}`;
+        checkbox.checked = allSelected;   // ← pre-check when "All Sections" is active
+
+        const label = document.createElement('label');
+        label.className = 'form-check-label';
+        label.htmlFor = `section-${index}`;
+        label.textContent = section.label;
+
+        checkboxDiv.appendChild(checkbox);
+        checkboxDiv.appendChild(label);
+        sectionContainer.appendChild(checkboxDiv);
+    });
+}
+
+/**
+ * Re-fetch sections scoped to suiteId (pass '' / null for all suites)
+ * and repopulate the dropdown, clearing any prior selection.
+ */
+async function refreshSectionFilter(suiteId) {
+    // Clear current section selections immediately
+    currentFilters.section_id = [];
+    document.getElementById('section-all').checked = true;
+
+    // Show loading indicator inside the dropdown (clears old checkboxes first)
+    const sectionContainer = document.getElementById('section-checkboxes-container');
+    sectionContainer.innerHTML = '<div class="text-muted small px-2 py-1"><i class="bi bi-hourglass-split"></i> Loading…</div>';
+
+    // Update label now that old checkboxes are gone
+    updateSectionFilterLabel();
+
+    try {
+        const url = suiteId ? `/testrail/filters?suite_id=${encodeURIComponent(suiteId)}` : '/testrail/filters';
+        const data = await apiCall(url);
+        populateSectionCheckboxes(data.sections);
+        // Update label again after new checkboxes are in the DOM
+        updateSectionFilterLabel();
+    } catch (error) {
+        console.error('Error refreshing section filter:', error);
+        sectionContainer.innerHTML = '<div class="text-danger small px-2 py-1"><i class="bi bi-exclamation-triangle"></i> Error loading sections</div>';
+        updateSectionFilterLabel();
+    }
+}
+
 function setupFilters() {
-    // Suite filter
-    document.getElementById('suite-filter').addEventListener('change', (e) => {
+    // Suite filter – refresh sections whenever the suite changes
+    document.getElementById('suite-filter').addEventListener('change', async (e) => {
         currentFilters.suite_id = e.target.value;
         currentPage = 1;
+        await refreshSectionFilter(e.target.value);  // repopulate sections first
+        loadTestrailStats();
         loadTestrailCases();
     });
 
     // Section filter - checkbox handling
     setupSectionCheckboxFilter();
 
+
     // Type filter
     document.getElementById('type-filter').addEventListener('change', (e) => {
         currentFilters.type_id = e.target.value;
         currentPage = 1;
+        loadTestrailStats();
         loadTestrailCases();
     });
 
@@ -96,6 +147,7 @@ function setupFilters() {
     document.getElementById('priority-filter').addEventListener('change', (e) => {
         currentFilters.priority_id = e.target.value;
         currentPage = 1;
+        loadTestrailStats();
         loadTestrailCases();
     });
 
@@ -103,6 +155,7 @@ function setupFilters() {
     document.getElementById('automation-status-filter').addEventListener('change', (e) => {
         currentFilters.automation_status = e.target.value;
         currentPage = 1;
+        loadTestrailStats();
         loadTestrailCases();
     });
 }
@@ -116,41 +169,43 @@ function setupSectionCheckboxFilter() {
         e.stopPropagation();
     });
 
-    // Handle "All Sections" checkbox
+    // "All Sections" checkbox – checking it resets all individual boxes to checked
     allCheckbox.addEventListener('change', (e) => {
-        const sectionCheckboxes = document.querySelectorAll('.section-checkbox');
-        sectionCheckboxes.forEach(cb => {
-            cb.checked = false;
-        });
-
         if (e.target.checked) {
+            // Re-check every individual section checkbox
+            document.querySelectorAll('.section-checkbox').forEach(cb => { cb.checked = true; });
             currentFilters.section_id = [];
-            updateSectionFilterLabel();
-            currentPage = 1;
-            loadTestrailStats([]); // Reload stats with no filters
-            loadTestrailCases();
+        } else {
+            // Uncheck every individual section checkbox
+            document.querySelectorAll('.section-checkbox').forEach(cb => { cb.checked = false; });
+            currentFilters.section_id = [];
         }
+        updateSectionFilterLabel();
+        currentPage = 1;
+        loadTestrailStats();
+        loadTestrailCases();
     });
 
-    // Handle individual section checkboxes
+    // Individual section checkboxes – use event delegation so dynamically-added
+    // checkboxes are handled without re-attaching listeners.
     document.addEventListener('change', (e) => {
         if (e.target.classList.contains('section-checkbox')) {
-            // Uncheck "All" when any specific section is selected
-            allCheckbox.checked = false;
+            const allSections    = document.querySelectorAll('.section-checkbox');
+            const checkedSections = Array.from(document.querySelectorAll('.section-checkbox:checked'));
 
-            // Get all checked section values
-            const checkedSections = Array.from(document.querySelectorAll('.section-checkbox:checked'))
-                .map(cb => cb.value);
-
-            // If no sections are checked, check "All" automatically
-            if (checkedSections.length === 0) {
+            if (checkedSections.length === allSections.length) {
+                // All individual sections are checked → back to "All Sections" state
                 allCheckbox.checked = true;
+                currentFilters.section_id = [];
+            } else {
+                // Some sections are unchecked → filter to only the checked ones
+                allCheckbox.checked = false;
+                currentFilters.section_id = checkedSections.map(cb => cb.value);
             }
 
-            currentFilters.section_id = checkedSections;
             updateSectionFilterLabel();
             currentPage = 1;
-            loadTestrailStats(checkedSections); // Reload stats with selected sections
+            loadTestrailStats();
             loadTestrailCases();
         }
     });
@@ -158,12 +213,17 @@ function setupSectionCheckboxFilter() {
 
 function updateSectionFilterLabel() {
     const label = document.getElementById('section-filter-label');
+    const allSections     = document.querySelectorAll('.section-checkbox');
     const checkedSections = document.querySelectorAll('.section-checkbox:checked');
 
-    if (checkedSections.length === 0) {
+    // "All Sections" when: no individual checkboxes exist yet, all are checked, or none are checked
+    if (allSections.length === 0 ||
+        checkedSections.length === allSections.length ||
+        checkedSections.length === 0) {
         label.textContent = 'All Sections';
     } else if (checkedSections.length === 1) {
-        label.textContent = checkedSections[0].nextElementSibling.textContent;
+        const sibling = checkedSections[0].nextElementSibling;
+        label.textContent = sibling ? sibling.textContent : '1 Section Selected';
     } else {
         label.textContent = `${checkedSections.length} Sections Selected`;
     }
@@ -178,20 +238,32 @@ function setupSearch() {
         debounceTimer = setTimeout(() => {
             currentFilters.search = e.target.value;
             currentPage = 1;
+            loadTestrailStats();
             loadTestrailCases();
         }, 500); // 500ms debounce
     });
 }
 
-async function loadTestrailStats(sectionIds = []) {
+async function loadTestrailStats() {
     try {
-        // Build query parameters
-        let params = '';
-        if (sectionIds && sectionIds.length > 0) {
-            params = `?section_id=${sectionIds.join(',')}`;
-        }
+        // Mirror every filter that loadTestrailCases uses so the cards always
+        // reflect exactly the same dataset shown in the table.
+        const params = new URLSearchParams();
+        if (currentFilters.suite_id)
+            params.set('suite_id', currentFilters.suite_id);
+        if (currentFilters.section_id && currentFilters.section_id.length > 0)
+            params.set('section_id', currentFilters.section_id.join(','));
+        if (currentFilters.type_id)
+            params.set('type_id', currentFilters.type_id);
+        if (currentFilters.priority_id)
+            params.set('priority_id', currentFilters.priority_id);
+        if (currentFilters.automation_status)
+            params.set('automation_status', currentFilters.automation_status);
+        if (currentFilters.search)
+            params.set('search', currentFilters.search);
 
-        const data = await apiCall(`/testrail/stats${params}`);
+        const qs = params.toString();
+        const data = await apiCall(`/testrail/stats${qs ? '?' + qs : ''}`);
 
         document.getElementById('total-cases').textContent = data.total_cases || 0;
         document.getElementById('unique-sections').textContent = data.unique_sections || 0;
@@ -504,7 +576,7 @@ function updateFilterSummary(totalCount) {
 }
 
 // Clear all filters
-function clearFilters() {
+async function clearFilters() {
     currentFilters = {
         suite_id: '',
         section_id: [],
@@ -518,17 +590,15 @@ function clearFilters() {
     // Reset UI elements
     document.getElementById('suite-filter').value = '';
 
-    // Reset section checkboxes
-    document.querySelectorAll('.section-checkbox').forEach(cb => cb.checked = false);
-    document.getElementById('section-all').checked = true;
-    updateSectionFilterLabel();
+    // Repopulate sections for "all suites" and reset checkboxes
+    await refreshSectionFilter('');
 
     document.getElementById('type-filter').value = '';
     document.getElementById('priority-filter').value = '';
     document.getElementById('automation-status-filter').value = '';
     document.getElementById('search-input').value = '';
 
-    // Reload stats and cases
-    loadTestrailStats([]);
+    // Reload stats and cases with cleared filters
+    loadTestrailStats();
     loadTestrailCases();
 }
