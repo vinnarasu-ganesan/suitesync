@@ -75,16 +75,21 @@
     </div>
 </div>
 
-<div class="row mb-3">
-     <div class="col-md-3">
-        <input type="text" class="form-control" id="search-input" placeholder="Search TestRail cases...">
+<!-- Search Bar Row -->
+<div class="row mb-2">
+    <div class="col-12">
+        <input type="text" class="form-control form-control-lg" id="search-input" placeholder="Search TestRail cases...">
     </div>
-    <div class="col-md-2">
+</div>
+
+<!-- Filters Row -->
+<div class="row mb-3 g-2">
+    <div class="col">
         <select class="form-select" id="suite-filter">
             <option value="">All Suites</option>
         </select>
     </div>
-    <div class="col-md-2">
+    <div class="col">
         <div class="dropdown">
             <button class="btn btn-outline-secondary dropdown-toggle w-100 text-start" type="button" id="section-filter-btn" data-bs-toggle="dropdown" aria-expanded="false">
                 <span id="section-filter-label">All Sections</span>
@@ -102,12 +107,12 @@
             </div>
         </div>
     </div>
-    <div class="col-md-2">
+    <div class="col">
         <select class="form-select" id="type-filter">
             <option value="">All Types</option>
         </select>
     </div>
-    <div class="col-md-2">
+    <div class="col">
         <select class="form-select" id="priority-filter">
             <option value="">All Priorities</option>
             <option value="1">P3 - Critical</option>
@@ -116,10 +121,7 @@
             <option value="4">P0 - High</option>
         </select>
     </div>
-</div>
-
-<div class="row mb-3">
-    <div class="col-md-3">
+    <div class="col">
         <select class="form-select" id="automation-status-filter">
             <option value="">All Automation Status</option>
             <option value="1">Manual</option>
