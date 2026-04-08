@@ -42,27 +42,34 @@ async function loadSectionAutomationData() {
     }
 }
 
-function updateSummaryCards() {
-    const totalSections = sectionsData.length;
+function updateSummaryCards(data) {
+    const sourceData = data !== undefined ? data : sectionsData;
+    const totalSections = sourceData.length;
     let fullyAutomated = 0;
     let partiallyAutomated = 0;
     let totalAutomationPercentage = 0;
+    let totalCases = 0;
+    let totalAutomatedCases = 0;
 
-    sectionsData.forEach(section => {
+    sourceData.forEach(section => {
         if (section.automation_percentage === 100) {
             fullyAutomated++;
         } else if (section.automation_percentage > 0) {
             partiallyAutomated++;
         }
         totalAutomationPercentage += section.automation_percentage;
+        totalCases += (section.total_cases || 0);
+        totalAutomatedCases += (section.automated_count || 0);
     });
 
     const avgAutomation = totalSections > 0 ? (totalAutomationPercentage / totalSections).toFixed(1) : 0;
+    const overallAutomation = totalCases > 0 ? ((totalAutomatedCases / totalCases) * 100).toFixed(1) : 0;
 
     document.getElementById('total-sections').textContent = totalSections;
     document.getElementById('fully-automated').textContent = fullyAutomated;
     document.getElementById('partially-automated').textContent = partiallyAutomated;
     document.getElementById('avg-automation').textContent = `${avgAutomation}%`;
+    document.getElementById('overall-automation').textContent = `${overallAutomation}%`;
 }
 
 function populateSuiteFilter() {
@@ -124,6 +131,7 @@ function applyFilters() {
         return matchesSearch && matchesSuite && matchesAutomation;
     });
     sortData();
+    updateSummaryCards(filteredData);
     renderTable();
 }
 
@@ -197,6 +205,7 @@ function clearFilters() {
     document.getElementById('automation-filter').value = '';
     filteredData = [...sectionsData];
     sortData();
+    updateSummaryCards(filteredData);
     renderTable();
 }
 
