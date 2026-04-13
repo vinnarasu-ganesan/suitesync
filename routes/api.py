@@ -422,7 +422,12 @@ def get_testrail_stats():
             automation_status_breakdown['null'] += 1
 
     automated_count       = automation_status_breakdown.get('4', 0)
+    manual_count          = automation_status_breakdown.get('1', 0)
     automation_percentage = round((automated_count / total_cases) * 100, 1) if total_cases > 0 else 0
+
+    # Explicit coverage: Automated ÷ (Automated + Manual) × 100
+    explicit_total                  = automated_count + manual_count
+    explicit_automation_percentage  = round((automated_count / explicit_total) * 100, 1) if explicit_total > 0 else 0
 
     return jsonify({
         'total_cases': total_cases,
@@ -432,7 +437,10 @@ def get_testrail_stats():
         'type_breakdown': type_breakdown,
         'automation_status_breakdown': automation_status_breakdown,
         'automated_count': automated_count,
-        'automation_percentage': automation_percentage
+        'manual_count': manual_count,
+        'automation_percentage': automation_percentage,
+        'explicit_total': explicit_total,
+        'explicit_automation_percentage': explicit_automation_percentage
     })
 
 
@@ -554,7 +562,12 @@ def get_testrail_stats_by_suite():
                     breakdown['null'] += 1
 
             automated_count = breakdown.get('4', 0)
-            automation_pct = round((automated_count / total_cases) * 100, 1) if total_cases > 0 else 0
+            manual_count    = breakdown.get('1', 0)
+            automation_pct  = round((automated_count / total_cases) * 100, 1) if total_cases > 0 else 0
+
+            # Explicit coverage: Automated ÷ (Automated + Manual) × 100
+            explicit_total = automated_count + manual_count
+            explicit_pct   = round((automated_count / explicit_total) * 100, 1) if explicit_total > 0 else 0
 
             result.append({
                 'suite_id': suite_id,
@@ -562,7 +575,10 @@ def get_testrail_stats_by_suite():
                 'total_cases': total_cases,
                 'automation_status_breakdown': breakdown,
                 'automated_count': automated_count,
-                'automation_percentage': automation_pct
+                'manual_count': manual_count,
+                'automation_percentage': automation_pct,
+                'explicit_total': explicit_total,
+                'explicit_automation_percentage': explicit_pct
             })
 
         # Sort by suite_id for a stable order

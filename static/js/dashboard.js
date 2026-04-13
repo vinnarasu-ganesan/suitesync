@@ -198,11 +198,16 @@ async function loadAutomationStatusChart() {
         _buildSuiteTabs(suiteData.suites || []);
         _renderAutomationChart('all');
 
+        _buildExplicitSuiteTabs(suiteData.suites || []);
+        _renderExplicitCoverageWidget('all');
+
     } catch (error) {
         console.error('Error loading automation status chart:', error);
         document.getElementById('automation-status-legend').innerHTML =
             '<p class="text-muted">Error loading automation status data</p>';
         document.getElementById('suite-filter-tabs').innerHTML = '';
+        document.getElementById('explicit-coverage-widget').innerHTML =
+            '<p class="text-muted">Error loading explicit coverage data</p>';
     }
 }
 
@@ -433,3 +438,167 @@ function _renderSuiteComparisonBars(activeSuiteId) {
         ${barsHtml}
     `;
 }
+
+// ---------------------------------------------------------------------------
+// Explicit Automation Coverage Widget
+// ---------------------------------------------------------------------------
+
+function _buildExplicitSuiteTabs(suites) {
+    const container = document.getElementById('explicit-suite-filter-tabs');
+    if (!container) return;
+
+    const tabs = [
+        { id: 'all', label: '<i class="bi bi-grid"></i> All Suites' },
+        ...suites.map(s => ({
+            id: s.suite_id,
+            label: `<i class="bi bi-folder2"></i> ${s.suite_name || 'Suite ' + s.suite_id}`
+        }))
+    ];
+
+    container.innerHTML = tabs.map((tab, i) => `
+        <button class="btn btn-sm ${i === 0 ? 'btn-primary' : 'btn-outline-secondary'} explicit-suite-tab-btn"
+                data-suite-id="${tab.id}">
+            ${tab.label}
+        </button>
+    `).join('');
+
+    container.querySelectorAll('.explicit-suite-tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            container.querySelectorAll('.explicit-suite-tab-btn').forEach(b => {
+                b.classList.remove('btn-primary');
+                b.classList.add('btn-outline-secondary');
+            });
+            btn.classList.remove('btn-outline-secondary');
+            btn.classList.add('btn-primary');
+            _renderExplicitCoverageWidget(btn.dataset.suiteId);
+        });
+    });
+}
+
+function _renderExplicitCoverageWidget(suiteId) {
+    const container = document.getElementById('explicit-coverage-widget');
+    if (!container) return;
+
+    // Helper to render one suite's explicit coverage block
+    function _suiteBlock(suiteName, automatedCount, manualCount, explicitTotal, explicitPct, totalCases, highlight) {
+        const barColor   = explicitPct >= 75 ? '#198754' : explicitPct >= 50 ? '#0d6efd' : '#ffc107';
+        const badgeCls   = explicitPct >= 75 ? 'bg-success' : explicitPct >= 50 ? 'bg-primary' : 'bg-warning text-dark';
+        const borderCls  = highlight ? 'border-2 border-primary shadow-sm' : '';
+
+        return `
+            <div class="col">
+                <div class="card h-100 ${borderCls}">
+                    <div class="card-body py-3">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <h6 class="fw-semibold mb-0">${suiteName}</h6>
+                            <span class="badge ${badgeCls} fs-6 ms-2">${explicitPct}%</span>
+                        </div>
+
+                        <!-- Big gauge progress bar -->
+                        <div class="progress mb-2" style="height:18px;border-radius:6px;"
+                             title="${automatedCount} Automated out of ${explicitTotal} (Automated + Manual)">
+                            <div class="progress-bar"
+                                 style="width:${explicitPct}%;background:${barColor};font-size:12px;font-weight:600;">
+                                ${explicitPct > 12 ? explicitPct + '%' : ''}
+                            </div>
+                        </div>
+
+                        <!-- Counts row -->
+                        <div class="row g-2 text-center mt-1">
+                            <div class="col-4">
+                                <div class="border rounded py-2 px-1">
+                                    <div class="fw-bold text-success" style="font-size:1.1rem;">${automatedCount}</div>
+                                    <div class="text-muted" style="font-size:10px;">Automated</div>
+                                </div>
+                            </div>
+                            <div class="col-4">
+                                <div class="border rounded py-2 px-1">
+                                    <div class="fw-bold text-warning" style="font-size:1.1rem;">${manualCount}</div>
+                                    <div class="text-muted" style="font-size:10px;">Manual</div>
+                                </div>
+                            </div>
+                            <div class="col-4">
+                                <div class="border rounded py-2 px-1">
+                                    <div class="fw-bold" style="font-size:1.1rem;">${explicitTotal}</div>
+                                    <div class="text-muted" style="font-size:10px;">Explicit Total</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="text-muted mt-2" style="font-size:11px;">
+                            <i class="bi bi-info-circle"></i>
+                            ${totalCases} total cases in TestRail
+                            &nbsp;|&nbsp; ${totalCases - explicitTotal} excluded from denominator
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    if (suiteId === 'all') {
+        // Overall card + one card per suite
+        const overallBlock = _suiteBlock(
+            'All Suites',
+            _allSuitesStats.automated_count,
+            _allSuitesStats.manual_count,
+            _allSuitesStats.explicit_total,
+            _allSuitesStats.explicit_automation_percentage,
+            _allSuitesStats.total_cases,
+            false
+        );
+
+        const suiteBlocks = (_bySuiteStats.suites || []).map(s =>
+            _suiteBlock(
+                s.suite_name || `Suite ${s.suite_id}`,
+                s.automated_count,
+                s.manual_count,
+                s.explicit_total,
+                s.explicit_automation_percentage,
+                s.total_cases,
+                false
+            )
+        ).join('');
+
+        container.innerHTML = `<div class="row g-3 row-cols-1 row-cols-md-3">${overallBlock}${suiteBlocks}</div>`;
+
+    } else {
+        // Single suite view
+        const suite = (_bySuiteStats.suites || []).find(s => s.suite_id === suiteId);
+        if (!suite) return;
+
+        container.innerHTML = `
+            <div class="row g-3 row-cols-1 row-cols-md-2">
+                ${_suiteBlock(
+                    suite.suite_name || `Suite ${suite.suite_id}`,
+                    suite.automated_count,
+                    suite.manual_count,
+                    suite.explicit_total,
+                    suite.explicit_automation_percentage,
+                    suite.total_cases,
+                    true
+                )}
+                <div class="col d-flex align-items-center">
+                    <div class="p-3 bg-light rounded w-100">
+                        <h6 class="fw-semibold text-muted mb-3">
+                            <i class="bi bi-calculator"></i> How it's calculated
+                        </h6>
+                        <div class="mb-2">
+                            <code class="d-block p-2 bg-white border rounded" style="font-size:13px;">
+                                Explicit Coverage = Automated ÷ (Automated + Manual) × 100
+                            </code>
+                        </div>
+                        <ul class="small text-muted mb-0 mt-2 ps-3">
+                            <li><strong>Automated (${suite.automated_count})</strong> — status 4</li>
+                            <li><strong>Manual (${suite.manual_count})</strong> — status 1</li>
+                            <li>Excluded from denominator: Obsolete, Will Not Automate,
+                                To Be Automated, No Status
+                                (${suite.total_cases - suite.explicit_total} cases)</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+}
+
