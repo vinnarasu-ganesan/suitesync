@@ -1,12 +1,76 @@
 from flask import Blueprint, jsonify, request, current_app
-from models import db, Test, TestRailCase, SyncLog
+from models import db, Test, TestRailCase, TestRailSection, SyncLog
 from services.sync_service import SyncService
 import logging
+import re
 import time
 
 logger = logging.getLogger(__name__)
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
+
+
+def _normalize_section_name(name):
+    """Normalize a section name for tolerant matching (case/space/dash-insensitive)."""
+    return re.sub(r'[^a-z0-9]', '', (name or '').lower())
+
+
+def _get_excluded_section_names():
+    """Return the set of normalized section names configured for exclusion."""
+    return {
+        _normalize_section_name(n)
+        for n in current_app.config.get('EXCLUDED_SECTION_NAMES', [])
+    }
+
+
+def _get_excluded_section_ids(excluded_names=None):
+    """Resolve section_ids to exclude: configured folders plus all descendants."""
+    if excluded_names is None:
+        excluded_names = _get_excluded_section_names()
+    if not excluded_names:
+        return set()
+
+    sections = TestRailSection.query.all()
+    children = {}
+    roots = []
+    for s in sections:
+        children.setdefault(s.parent_id, []).append(s.section_id)
+        if _normalize_section_name(s.name) in excluded_names:
+            roots.append(s.section_id)
+
+    excluded = set()
+    stack = list(roots)
+    while stack:
+        sid = stack.pop()
+        if sid in excluded:
+            continue
+        excluded.add(sid)
+        stack.extend(children.get(sid, []))
+    return excluded
+
+
+def _is_case_excluded(case, excluded_ids, excluded_names):
+    """A case is excluded if it lives in an excluded section (or its subsections)."""
+    if case.section_id and str(case.section_id) in excluded_ids:
+        return True
+    if _normalize_section_name(case.section_name) in excluded_names:
+        return True
+    return False
+
+
+def _automation_breakdown(cases):
+    """Build an automation-status breakdown dict from a list of cases."""
+    breakdown = {'0': 0, '1': 0, '2': 0, '3': 0, '4': 0, '5': 0, 'null': 0}
+    for case in cases:
+        if case.custom_fields and 'custom_automation_status' in case.custom_fields:
+            status = str(case.custom_fields['custom_automation_status'])
+            if status in breakdown:
+                breakdown[status] += 1
+            else:
+                breakdown['null'] += 1
+        else:
+            breakdown['null'] += 1
+    return breakdown
 
 
 @api_bp.route('/tests', methods=['GET'])
@@ -389,9 +453,25 @@ def get_testrail_stats():
         ]
 
     # ── Compute aggregates from the fully-filtered list ───────────────────
-    total_cases     = len(all_cases)
-    unique_sections = len({c.section_id for c in all_cases if c.section_id})
-    unique_suites   = len({c.suite_id   for c in all_cases if c.suite_id})
+    # Cases that live in excluded folders (e.g. Archived / To-Be-Deleted) and
+    # their subsections are removed from the distribution and coverage maths,
+    # and surfaced separately as an excluded count.
+    excluded_names = _get_excluded_section_names()
+    excluded_ids   = _get_excluded_section_ids(excluded_names)
+
+    excluded_cases = [
+        c for c in all_cases if _is_case_excluded(c, excluded_ids, excluded_names)
+    ]
+    active_cases = [
+        c for c in all_cases if not _is_case_excluded(c, excluded_ids, excluded_names)
+    ]
+
+    excluded_count = len(excluded_cases)
+    excluded_status_breakdown = _automation_breakdown(excluded_cases)
+
+    total_cases     = len(active_cases)
+    unique_sections = len({c.section_id for c in active_cases if c.section_id})
+    unique_suites   = len({c.suite_id   for c in active_cases if c.suite_id})
 
     priority_breakdown = {}
     type_breakdown     = {}
@@ -405,7 +485,7 @@ def get_testrail_stats():
         'null': 0
     }
 
-    for case in all_cases:
+    for case in active_cases:
         if case.priority_id:
             k = str(case.priority_id)
             priority_breakdown[k] = priority_breakdown.get(k, 0) + 1
@@ -440,7 +520,9 @@ def get_testrail_stats():
         'manual_count': manual_count,
         'automation_percentage': automation_percentage,
         'explicit_total': explicit_total,
-        'explicit_automation_percentage': explicit_automation_percentage
+        'explicit_automation_percentage': explicit_automation_percentage,
+        'excluded_count': excluded_count,
+        'excluded_status_breakdown': excluded_status_breakdown
     })
 
 
@@ -479,6 +561,7 @@ def get_section_automation_stats():
                     'manual_count': 0,
                     'to_be_automated_count': 0,
                     'will_not_automate_count': 0,
+                    'blocked_count': 0,
                     'other_count': 0
                 }
 
@@ -493,8 +576,10 @@ def get_section_automation_stats():
                     section_map[section_id]['manual_count'] += 1
                 elif status == '5':  # To Be Automated
                     section_map[section_id]['to_be_automated_count'] += 1
-                elif status == '3':  # Will Not Automate
+                elif status == '7':  # Not Automatable
                     section_map[section_id]['will_not_automate_count'] += 1
+                elif status == '3':  # Blocked
+                    section_map[section_id]['blocked_count'] += 1
                 else:
                     section_map[section_id]['other_count'] += 1
             else:
@@ -545,21 +630,24 @@ def get_testrail_stats_by_suite():
         ).distinct().filter(TestRailCase.suite_id.isnot(None)).all()
 
         result = []
+        excluded_names = _get_excluded_section_names()
+        excluded_ids   = _get_excluded_section_ids(excluded_names)
+
         for suite_id, suite_name in suites_query:
-            cases = TestRailCase.query.filter_by(suite_id=suite_id).all()
+            all_suite_cases = TestRailCase.query.filter_by(suite_id=suite_id).all()
+            cases = [
+                c for c in all_suite_cases
+                if not _is_case_excluded(c, excluded_ids, excluded_names)
+            ]
+            excluded_cases = [
+                c for c in all_suite_cases
+                if _is_case_excluded(c, excluded_ids, excluded_names)
+            ]
             total_cases = len(cases)
 
-            breakdown = {'0': 0, '1': 0, '2': 0, '3': 0, '4': 0, '5': 0, 'null': 0}
-
-            for case in cases:
-                if case.custom_fields and 'custom_automation_status' in case.custom_fields:
-                    status = str(case.custom_fields['custom_automation_status'])
-                    if status in breakdown:
-                        breakdown[status] += 1
-                    else:
-                        breakdown['null'] += 1
-                else:
-                    breakdown['null'] += 1
+            breakdown = _automation_breakdown(cases)
+            excluded_count = len(excluded_cases)
+            excluded_status_breakdown = _automation_breakdown(excluded_cases)
 
             automated_count = breakdown.get('4', 0)
             manual_count    = breakdown.get('1', 0)
@@ -578,7 +666,9 @@ def get_testrail_stats_by_suite():
                 'manual_count': manual_count,
                 'automation_percentage': automation_pct,
                 'explicit_total': explicit_total,
-                'explicit_automation_percentage': explicit_pct
+                'explicit_automation_percentage': explicit_pct,
+                'excluded_count': excluded_count,
+                'excluded_status_breakdown': excluded_status_breakdown
             })
 
         # Sort by suite_id for a stable order

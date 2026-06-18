@@ -85,6 +85,36 @@ class TestRailCase(db.Model):
         }
 
 
+class TestRailSection(db.Model):
+    """Model representing a TestRail section (folder), used for hierarchy lookups."""
+
+    __tablename__ = 'testrail_sections'
+
+    id = db.Column(db.Integer, primary_key=True)
+    section_id = db.Column(db.String(50), unique=True, nullable=False, index=True)
+    name = db.Column(db.String(500), nullable=True)
+    parent_id = db.Column(db.String(50), nullable=True, index=True)
+    suite_id = db.Column(db.String(50), nullable=True, index=True)
+    suite_name = db.Column(db.String(500), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def __repr__(self):
+        return f'<TestRailSection {self.section_id} {self.name}>'
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'section_id': self.section_id,
+            'name': self.name,
+            'parent_id': self.parent_id,
+            'suite_id': self.suite_id,
+            'suite_name': self.suite_name,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
+        }
+
+
 class SyncLog(db.Model):
     """Model representing a synchronization log entry."""
 

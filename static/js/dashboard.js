@@ -246,13 +246,14 @@ function _buildSuiteTabs(suites) {
 }
 
 function _renderAutomationChart(suiteId) {
-    let breakdown, totalCases, automatedCount, automationPct, suiteLabel;
+    let breakdown, totalCases, automatedCount, automationPct, suiteLabel, excludedCount;
 
     if (suiteId === 'all') {
         breakdown       = _allSuitesStats.automation_status_breakdown;
         totalCases      = _allSuitesStats.total_cases;
         automatedCount  = _allSuitesStats.automated_count;
         automationPct   = _allSuitesStats.automation_percentage;
+        excludedCount   = _allSuitesStats.excluded_count || 0;
         suiteLabel      = 'All Suites';
     } else {
         const suite = (_bySuiteStats.suites || []).find(s => s.suite_id === suiteId);
@@ -261,6 +262,7 @@ function _renderAutomationChart(suiteId) {
         totalCases      = suite.total_cases;
         automatedCount  = suite.automated_count;
         automationPct   = suite.automation_percentage;
+        excludedCount   = suite.excluded_count || 0;
         suiteLabel      = suite.suite_name || `Suite ${suite.suite_id}`;
     }
 
@@ -339,6 +341,11 @@ function _renderAutomationChart(suiteId) {
         <div class="mt-3 pt-3 border-top">
             <strong>Total Cases: ${totalCases}</strong>
         </div>
+        ${excludedCount > 0 ? `
+        <div class="mt-2 d-flex justify-content-between align-items-center small text-muted">
+            <span><i class="bi bi-archive"></i> Excluded (Archived / To-Be-Deleted)</span>
+            <span class="badge bg-secondary rounded-pill">${excludedCount}</span>
+        </div>` : ''}
     `;
 
     // Suite comparison bars (only in All-Suites view with multiple suites)
@@ -480,10 +487,11 @@ function _renderExplicitCoverageWidget(suiteId) {
     if (!container) return;
 
     // Helper to render one suite's explicit coverage block
-    function _suiteBlock(suiteName, automatedCount, manualCount, explicitTotal, explicitPct, totalCases, highlight) {
+    function _suiteBlock(suiteName, automatedCount, manualCount, explicitTotal, explicitPct, totalCases, highlight, excludedCount) {
         const barColor   = explicitPct >= 75 ? '#198754' : explicitPct >= 50 ? '#0d6efd' : '#ffc107';
         const badgeCls   = explicitPct >= 75 ? 'bg-success' : explicitPct >= 50 ? 'bg-primary' : 'bg-warning text-dark';
         const borderCls  = highlight ? 'border-2 border-primary shadow-sm' : '';
+        const excluded   = excludedCount || 0;
 
         return `
             <div class="col">
@@ -530,6 +538,11 @@ function _renderExplicitCoverageWidget(suiteId) {
                             ${totalCases} total cases in TestRail
                             &nbsp;|&nbsp; ${totalCases - explicitTotal} excluded from denominator
                         </div>
+                        ${excluded > 0 ? `
+                        <div class="text-muted mt-1" style="font-size:11px;">
+                            <i class="bi bi-archive"></i>
+                            ${excluded} cases excluded (Archived / To-Be-Deleted), not counted above
+                        </div>` : ''}
                     </div>
                 </div>
             </div>
@@ -545,7 +558,8 @@ function _renderExplicitCoverageWidget(suiteId) {
             _allSuitesStats.explicit_total,
             _allSuitesStats.explicit_automation_percentage,
             _allSuitesStats.total_cases,
-            false
+            false,
+            _allSuitesStats.excluded_count
         );
 
         const suiteBlocks = (_bySuiteStats.suites || []).map(s =>
@@ -556,7 +570,8 @@ function _renderExplicitCoverageWidget(suiteId) {
                 s.explicit_total,
                 s.explicit_automation_percentage,
                 s.total_cases,
-                false
+                false,
+                s.excluded_count
             )
         ).join('');
 
@@ -576,7 +591,8 @@ function _renderExplicitCoverageWidget(suiteId) {
                     suite.explicit_total,
                     suite.explicit_automation_percentage,
                     suite.total_cases,
-                    true
+                    true,
+                    suite.excluded_count
                 )}
                 <div class="col d-flex align-items-center">
                     <div class="p-3 bg-light rounded w-100">
