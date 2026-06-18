@@ -159,7 +159,7 @@ function updateSortIndicators() {
 function renderTable() {
     const tbody = document.getElementById('sections-tbody');
     if (filteredData.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4"><i class="bi bi-inbox fs-1"></i><p class="mt-2">No sections found.</p></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4"><i class="bi bi-inbox fs-1"></i><p class="mt-2">No sections found.</p></td></tr>';
         return;
     }
     tbody.innerHTML = filteredData.map(section => {
@@ -174,6 +174,7 @@ function renderTable() {
                 <td class="text-center"><span class="badge bg-success">${section.automated_count}</span></td>
                 <td class="text-center"><span class="badge bg-warning text-dark">${section.manual_count}</span></td>
                 <td class="text-center"><span class="badge bg-info">${section.to_be_automated_count}</span></td>
+                <td class="text-center"><span class="badge bg-danger">${section.blocked_count ?? 0}</span></td>
                 <td class="text-center"><span class="badge ${badgeClass} automation-badge">${percentage}%</span></td>
                 <td><div class="progress"><div class="progress-bar ${progressBarClass}" role="progressbar" style="width: ${percentage}%" aria-valuenow="${percentage}" aria-valuemin="0" aria-valuemax="100">${percentage}%</div></div></td>
             </tr>
@@ -215,7 +216,7 @@ function exportToCSV() {
         return;
     }
     const headers = ['Section ID', 'Section Name', 'Suite Name', 'Total Cases', 'Automated', 'Manual', 'To Be Automated', 'Will Not Automate', 'Other', 'Automation %'];
-    const rows = filteredData.map(section => [section.section_id, section.section_name, section.suite_name, section.total_cases, section.automated_count, section.manual_count, section.to_be_automated_count, section.will_not_automate_count, section.other_count, section.automation_percentage]);
+    const rows = filteredData.map(section => [section.section_id, section.section_name, section.suite_name, section.total_cases, section.automated_count, section.manual_count, section.to_be_automated_count, section.blocked_count ?? 0, section.other_count, section.automation_percentage]);
     const csvContent = [headers.join(','), ...rows.map(row => row.map(cell => `"${cell}"`).join(','))].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
@@ -230,7 +231,7 @@ function exportToCSV() {
 
 function showError(message) {
     const tbody = document.getElementById('sections-tbody');
-    tbody.innerHTML = `<tr><td colspan="8" class="text-center text-danger py-4"><i class="bi bi-exclamation-triangle fs-1"></i><p class="mt-2">${escapeHtml(message)}</p></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" class="text-center text-danger py-4"><i class="bi bi-exclamation-triangle fs-1"></i><p class="mt-2">${escapeHtml(message)}</p></td></tr>`;
 }
 
 function escapeHtml(text) {

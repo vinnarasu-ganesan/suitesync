@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime
-from models import db, Test, TestRailCase, SyncLog
+from models import db, Test, TestRailCase, TestRailSection, SyncLog
 from services.git_service import GitService
 from services.pytest_parser import PytestParser
 from services.testrail_service import TestRailService
@@ -164,6 +164,24 @@ class SyncService:
                 for section in sections_list:
                     sid = str(section.get('id', ''))
                     sections_map[sid] = section.get('name', f'Section {sid}')
+
+                    parent_raw = section.get('parent_id')
+                    parent_id = str(parent_raw) if parent_raw not in (None, '') else None
+                    db_section = TestRailSection.query.filter_by(section_id=sid).first()
+                    if db_section:
+                        db_section.name = section.get('name', f'Section {sid}')
+                        db_section.parent_id = parent_id
+                        db_section.suite_id = str(suite_id)
+                        db_section.suite_name = suite_name
+                        db_section.updated_at = datetime.utcnow()
+                    else:
+                        db.session.add(TestRailSection(
+                            section_id=sid,
+                            name=section.get('name', f'Section {sid}'),
+                            parent_id=parent_id,
+                            suite_id=str(suite_id),
+                            suite_name=suite_name
+                        ))
             logger.info(f"[Suite {suite_id}] Found {len(sections_map)} sections")
 
             # --- Cases ---

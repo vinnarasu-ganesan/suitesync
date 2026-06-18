@@ -51,6 +51,17 @@ class Config:
     SYNC_ON_STARTUP = os.environ.get('SYNC_ON_STARTUP', 'false').lower() == 'true'
     AUTO_SYNC_INTERVAL = int(os.environ.get('AUTO_SYNC_INTERVAL', 3600))
 
+    # TestRail sections (folders) whose cases are excluded from automation
+    # status distribution and coverage calculations. Matching is done on a
+    # normalized name (case/space/dash-insensitive) and includes all
+    # descendant subsections. Comma-separated env override supported.
+    _excluded_sections_raw = os.environ.get(
+        'TESTRAIL_EXCLUDED_SECTIONS', 'Archived,To-Be-Deleted'
+    )
+    EXCLUDED_SECTION_NAMES = [
+        name.strip() for name in _excluded_sections_raw.split(',') if name.strip()
+    ]
+
 
 class DevelopmentConfig(Config):
     """Development configuration."""
