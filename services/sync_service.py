@@ -1,5 +1,6 @@
 import logging
 from datetime import datetime
+from sqlalchemy import or_
 from models import db, Test, TestRailCase, TestRailSection, SyncLog
 from services.git_service import GitService
 from services.pytest_parser import PytestParser
@@ -373,9 +374,28 @@ class SyncService:
             # Full suite sync: remove DB cases no longer in TestRail.
             # Section-scoped sync: only clean up cases inside the resolved subtree
             # so that cases from OTHER sections in the same suite are untouched.
+            #
+            # NOTE: We intentionally do NOT filter by suite_id alone in the DB
+            # query because older records (written before suite_id tracking was
+            # introduced, or before a migration) may have suite_id=NULL.  Those
+            # stale rows would be silently skipped and never cleaned up.
+            # Instead we rely on section_id (which is globally unique in TestRail)
+            # for section-scoped syncs, and for full-suite syncs we also include
+            # NULL-suite_id rows whose section_id is known to belong to this suite.
             if not section_scoped:
-                # Full suite – remove anything no longer returned by the API
-                db_cases_for_suite = TestRailCase.query.filter_by(suite_id=str(suite_id)).all()
+                # Full suite – collect all section IDs that belong to this suite
+                suite_section_ids = list(sections_map.keys())
+                # Include rows whose suite_id matches OR whose suite_id is NULL
+                # but whose section_id is one of this suite's sections (legacy rows).
+                db_cases_for_suite = TestRailCase.query.filter(
+                    or_(
+                        TestRailCase.suite_id == str(suite_id),
+                        db.and_(
+                            TestRailCase.suite_id.is_(None),
+                            TestRailCase.section_id.in_(suite_section_ids)
+                        )
+                    )
+                ).all()
                 deleted_count = 0
                 for db_case in db_cases_for_suite:
                     if db_case.case_id not in current_case_ids:
@@ -386,10 +406,14 @@ class SyncService:
                         db.session.delete(db_case)
                         deleted_count += 1
             else:
-                # Section-scoped – only clean up within the resolved subtree
+                # Section-scoped – only clean up within the resolved subtree.
+                # Use section_id as the sole filter: TestRail section IDs are
+                # globally unique so there is no risk of touching cases from
+                # other suites.  This also catches legacy rows where suite_id
+                # was not stored (NULL) and would therefore be missed by a
+                # suite_id equality check.
                 deleted_count = 0
                 db_cases_in_subtree = TestRailCase.query.filter(
-                    TestRailCase.suite_id == str(suite_id),
                     TestRailCase.section_id.in_(list(allowed_section_ids))
                 ).all()
                 for db_case in db_cases_in_subtree:
