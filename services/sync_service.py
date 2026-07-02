@@ -134,33 +134,129 @@ class SyncService:
         """Sync test information with TestRail for all configured suites."""
         try:
             suite_ids = self.testrail_service.suite_ids
-            logger.info(f"Syncing {len(suite_ids)} TestRail suite(s): {suite_ids}")
+
+            # ── Resolve per-suite section filters ──────────────────────────────
+            # Primary source: TESTRAIL_SUITE_SECTION_MAP  e.g. {'206374': ['1867685']}
+            suite_section_map = dict(self.config.get('TESTRAIL_SUITE_SECTION_MAP') or {})
+
+            # Legacy fallback: TESTRAIL_SECTION_IDS is only honoured when there
+            # is exactly ONE suite configured AND the explicit map is not set.
+            # With multiple suites it is impossible to know which suite the
+            # section belongs to, so the legacy variable is intentionally ignored.
+            legacy_section_ids = self.config.get('TESTRAIL_SECTION_IDS') or []
+            if legacy_section_ids and not suite_section_map:
+                if len(suite_ids) == 1:
+                    suite_section_map[suite_ids[0]] = legacy_section_ids
+                    logger.info(
+                        f"Using TESTRAIL_SECTION_IDS={legacy_section_ids} "
+                        f"for the single configured suite {suite_ids[0]}"
+                    )
+                else:
+                    logger.warning(
+                        "TESTRAIL_SECTION_IDS is set but multiple suites are configured "
+                        f"({suite_ids}). Cannot determine which suite owns the section(s) "
+                        f"{legacy_section_ids}. Use TESTRAIL_SUITE_SECTION_MAP instead "
+                        "(e.g. TESTRAIL_SUITE_SECTION_MAP=206374:1867685). "
+                        "Falling back to full sync for all suites."
+                    )
+
+            logger.info(
+                f"Syncing {len(suite_ids)} TestRail suite(s): {suite_ids} | "
+                f"Section filter map: {suite_section_map if suite_section_map else 'none (full sync)'}"
+            )
 
             for suite_id in suite_ids:
-                self._sync_suite(suite_id)
+                section_ids_for_suite = suite_section_map.get(str(suite_id)) or []
+                if section_ids_for_suite:
+                    logger.info(
+                        f"[Suite {suite_id}] Section-scoped sync: "
+                        f"collecting only section(s) {section_ids_for_suite}"
+                    )
+                    for section_id in section_ids_for_suite:
+                        self._sync_suite(suite_id, section_id=section_id)
+                else:
+                    logger.info(f"[Suite {suite_id}] Full suite sync (no section filter)")
+                    self._sync_suite(suite_id)
 
         except Exception as e:
             logger.error(f"Error syncing with TestRail: {e}")
 
-    def _sync_suite(self, suite_id):
-        """Sync a single TestRail suite into the database."""
+    @staticmethod
+    def _resolve_descendant_section_ids(sections_list, root_section_id):
+        """Return a set of section IDs that are the root section itself plus all
+        of its descendants (children, grandchildren, …).
+
+        The TestRail API ``get_cases?section_id=X`` only returns cases directly
+        inside section X and does NOT recurse into sub-sections.  We therefore
+        resolve the full sub-tree here and filter cases in Python.
+
+        Args:
+            sections_list: List of section dicts as returned by ``get_sections``.
+            root_section_id: The top-level section/group ID whose subtree we want
+                             (string or int).
+        Returns:
+            set of string section IDs (including root_section_id itself).
+        """
+        root = str(root_section_id)
+
+        # Build parent_id → [child_section_id] map
+        children: dict = {}
+        for s in sections_list:
+            parent_raw = s.get('parent_id')
+            parent_id = str(parent_raw) if parent_raw not in (None, '') else None
+            child_id = str(s.get('id', ''))
+            children.setdefault(parent_id, []).append(child_id)
+
+        # BFS / DFS from root
+        resolved: set = set()
+        stack = [root]
+        while stack:
+            sid = stack.pop()
+            if sid in resolved:
+                continue
+            resolved.add(sid)
+            stack.extend(children.get(sid, []))
+
+        return resolved
+
+    def _sync_suite(self, suite_id, section_id=None):
+        """Sync a single TestRail suite (or a specific section subtree) into the database.
+
+        Args:
+            suite_id: TestRail suite ID to sync.
+            section_id: Optional parent section/group ID.  When given, ALL cases
+                whose section is the root section **or any of its descendants**
+                are collected.  The resolution is done on the full sections list
+                already fetched, so no extra API calls are needed.
+
+                Note: The TestRail ``get_cases?section_id=X`` API filter only
+                returns cases directly in section X (it does not recurse).  We
+                therefore fetch all cases for the suite and filter in Python.
+        """
         try:
+            scope_label = (
+                f"[Suite {suite_id}]" if not section_id
+                else f"[Suite {suite_id} / Section {section_id}]"
+            )
+
             # --- Suite info ---
-            logger.info(f"[Suite {suite_id}] Fetching suite information...")
+            logger.info(f"{scope_label} Fetching suite information...")
             suite_info = self.testrail_service.get_suite(suite_id)
             suite_name = (
                 suite_info.get('name', f'Suite {suite_id}') if suite_info else f'Suite {suite_id}'
             )
-            logger.info(f"[Suite {suite_id}] Suite name: {suite_name}")
+            logger.info(f"{scope_label} Suite name: {suite_name}")
 
             # --- Sections ---
-            logger.info(f"[Suite {suite_id}] Fetching sections...")
+            logger.info(f"{scope_label} Fetching sections...")
             sections_response = self.testrail_service.get_sections(suite_id)
+            sections_list = []
             sections_map = {}
             if sections_response:
-                # get_sections() returns a list directly
-                sections_list = sections_response if isinstance(sections_response, list) else \
-                    sections_response.get('sections', [])
+                sections_list = (
+                    sections_response if isinstance(sections_response, list)
+                    else sections_response.get('sections', [])
+                )
                 for section in sections_list:
                     sid = str(section.get('id', ''))
                     sections_map[sid] = section.get('name', f'Section {sid}')
@@ -182,40 +278,76 @@ class SyncService:
                             suite_id=str(suite_id),
                             suite_name=suite_name
                         ))
-            logger.info(f"[Suite {suite_id}] Found {len(sections_map)} sections")
+            logger.info(f"{scope_label} Found {len(sections_map)} sections")
 
-            # --- Cases ---
-            logger.info(f"[Suite {suite_id}] Fetching cases...")
+            # --- Resolve descendant section IDs when a parent section is given ---
+            # The TestRail API get_cases?section_id=X does NOT recurse into
+            # subsections, so we resolve the full subtree ourselves and filter
+            # cases in Python after fetching all cases for the suite.
+            allowed_section_ids: set = set()   # empty = no filter (sync all)
+            section_scoped = False
+            if section_id:
+                allowed_section_ids = self._resolve_descendant_section_ids(
+                    sections_list, section_id
+                )
+                section_scoped = True
+                # Log the resolved sub-sections so it is easy to verify
+                resolved_names = [
+                    f"{sid}({sections_map.get(sid, '?')})"
+                    for sid in sorted(allowed_section_ids)
+                ]
+                logger.info(
+                    f"{scope_label} Resolved {len(allowed_section_ids)} section(s) "
+                    f"in subtree of {section_id}: {resolved_names}"
+                )
+
+            # --- Cases (always fetch all for the suite; filter below) ---
+            logger.info(f"{scope_label} Fetching all cases for suite {suite_id}...")
+            # Do NOT pass section_id to the API – it only matches the root section
+            # and ignores descendants.  We filter in Python instead.
             response = self.testrail_service.get_cases(suite_id)
             if not response:
-                logger.warning(f"[Suite {suite_id}] No cases retrieved from TestRail")
+                logger.warning(f"{scope_label} No cases retrieved from TestRail")
                 return
 
             if isinstance(response, dict) and 'cases' in response:
-                cases = response['cases']
+                all_cases = response['cases']
             elif isinstance(response, list):
-                cases = response
+                all_cases = response
             else:
-                logger.error(f"[Suite {suite_id}] Unexpected response format: {type(response)}")
+                logger.error(f"{scope_label} Unexpected response format: {type(response)}")
                 return
 
-            logger.info(f"[Suite {suite_id}] Retrieved {len(cases)} cases from TestRail")
+            logger.info(f"{scope_label} Total cases in suite: {len(all_cases)}")
 
-            # Track case IDs fetched for THIS suite (used for cleanup)
+            # Apply subtree filter when a parent section was requested
+            if section_scoped:
+                cases = [
+                    c for c in all_cases
+                    if str(c.get('section_id', '')) in allowed_section_ids
+                ]
+                logger.info(
+                    f"{scope_label} After subtree filter: {len(cases)} case(s) "
+                    f"(discarded {len(all_cases) - len(cases)} from other sections)"
+                )
+            else:
+                cases = all_cases
+
+            # Track case IDs fetched for THIS suite/section (used for cleanup)
             current_case_ids = set()
 
             for case in cases:
                 case_id = f"C{case['id']}"
                 current_case_ids.add(case_id)
-                section_id = str(case.get('section_id', ''))
-                section_name = sections_map.get(section_id, f'Section {section_id}')
+                section_id_val = str(case.get('section_id', ''))
+                section_name = sections_map.get(section_id_val, f'Section {section_id_val}')
 
                 custom_fields = {k: v for k, v in case.items() if k.startswith('custom_')}
 
                 testrail_case = TestRailCase.query.filter_by(case_id=case_id).first()
                 if testrail_case:
                     testrail_case.title = case['title']
-                    testrail_case.section_id = section_id
+                    testrail_case.section_id = section_id_val
                     testrail_case.section_name = section_name
                     testrail_case.suite_id = str(case.get('suite_id', suite_id))
                     testrail_case.suite_name = suite_name
@@ -227,7 +359,7 @@ class SyncService:
                     testrail_case = TestRailCase(
                         case_id=case_id,
                         title=case['title'],
-                        section_id=section_id,
+                        section_id=section_id_val,
                         section_name=section_name,
                         suite_id=str(case.get('suite_id', suite_id)),
                         suite_name=suite_name,
@@ -237,21 +369,41 @@ class SyncService:
                     )
                     db.session.add(testrail_case)
 
-            # --- Per-suite cleanup: only remove cases that belong to THIS suite ---
-            db_cases_for_suite = TestRailCase.query.filter_by(suite_id=str(suite_id)).all()
-            deleted_count = 0
-            for db_case in db_cases_for_suite:
-                if db_case.case_id not in current_case_ids:
-                    logger.info(
-                        f"[Suite {suite_id}] Deleting case {db_case.case_id} "
-                        f"({db_case.title}) – no longer exists in TestRail"
-                    )
-                    db.session.delete(db_case)
-                    deleted_count += 1
+            # --- Per-suite cleanup ---
+            # Full suite sync: remove DB cases no longer in TestRail.
+            # Section-scoped sync: only clean up cases inside the resolved subtree
+            # so that cases from OTHER sections in the same suite are untouched.
+            if not section_scoped:
+                # Full suite – remove anything no longer returned by the API
+                db_cases_for_suite = TestRailCase.query.filter_by(suite_id=str(suite_id)).all()
+                deleted_count = 0
+                for db_case in db_cases_for_suite:
+                    if db_case.case_id not in current_case_ids:
+                        logger.info(
+                            f"{scope_label} Removing case {db_case.case_id} "
+                            f"({db_case.title}) – no longer exists in TestRail"
+                        )
+                        db.session.delete(db_case)
+                        deleted_count += 1
+            else:
+                # Section-scoped – only clean up within the resolved subtree
+                deleted_count = 0
+                db_cases_in_subtree = TestRailCase.query.filter(
+                    TestRailCase.suite_id == str(suite_id),
+                    TestRailCase.section_id.in_(list(allowed_section_ids))
+                ).all()
+                for db_case in db_cases_in_subtree:
+                    if db_case.case_id not in current_case_ids:
+                        logger.info(
+                            f"{scope_label} Removing case {db_case.case_id} "
+                            f"({db_case.title}) – no longer in subtree"
+                        )
+                        db.session.delete(db_case)
+                        deleted_count += 1
 
             db.session.commit()
             logger.info(
-                f"[Suite {suite_id}] Sync complete – "
+                f"{scope_label} Sync complete – "
                 f"{len(cases)} cases upserted, {deleted_count} obsolete cases removed."
             )
 

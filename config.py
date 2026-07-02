@@ -37,6 +37,45 @@ class Config:
     # Primary / default suite ID kept for backward compatibility
     TESTRAIL_SUITE_ID = TESTRAIL_SUITE_IDS[0] if TESTRAIL_SUITE_IDS else '1'
 
+    # ── Suite-to-section mapping (RECOMMENDED for multi-suite deployments) ──────
+    #
+    # TESTRAIL_SUITE_SECTION_MAP explicitly ties a section/group ID to the suite
+    # it belongs to, so the framework knows exactly which suite to filter when
+    # syncing.  Suites listed in TESTRAIL_SUITE_IDS that are NOT mentioned here
+    # are synced in full (no section filter).
+    #
+    # Format:  <suite_id>:<section_id1>,<section_id2>;<suite_id>:<section_id>
+    # Example: collect only "PCBE+VME System test" (section 1867685) from suite
+    #          206374, while suites 126845 and 257515 are fully synced:
+    #
+    #   TESTRAIL_SUITE_SECTION_MAP=206374:1867685
+    #
+    # Multiple sections for the same suite:
+    #   TESTRAIL_SUITE_SECTION_MAP=206374:1867685,1867700
+    #
+    # Multiple suites, each with their own section filter:
+    #   TESTRAIL_SUITE_SECTION_MAP=206374:1867685;257515:9876543
+    #
+    _suite_section_map_raw = os.environ.get('TESTRAIL_SUITE_SECTION_MAP', '')
+    TESTRAIL_SUITE_SECTION_MAP: dict = {}
+    if _suite_section_map_raw:
+        for _entry in _suite_section_map_raw.split(';'):
+            _entry = _entry.strip()
+            if ':' in _entry:
+                _suite_part, _sections_part = _entry.split(':', 1)
+                _suite_key = _suite_part.strip()
+                _sections = [s.strip() for s in _sections_part.split(',') if s.strip()]
+                if _suite_key:
+                    TESTRAIL_SUITE_SECTION_MAP[_suite_key] = _sections
+
+    # ── Legacy single-suite section filter (kept for backward compatibility) ──
+    #
+    # TESTRAIL_SECTION_IDS is honoured ONLY when exactly ONE suite is configured
+    # AND TESTRAIL_SUITE_SECTION_MAP is not set.  For multi-suite setups always
+    # use TESTRAIL_SUITE_SECTION_MAP instead.
+    _section_ids_raw = os.environ.get('TESTRAIL_SECTION_IDS', '')
+    TESTRAIL_SECTION_IDS = [sid.strip() for sid in _section_ids_raw.split(',') if sid.strip()]
+
     # GitHub Webhook
     GITHUB_WEBHOOK_SECRET = os.environ.get('GITHUB_WEBHOOK_SECRET', '')
 

@@ -79,19 +79,42 @@ class TestRailService:
         case_id = case_id.replace('C', '').replace('c', '')
         return self._make_request('GET', f'get_case/{case_id}')
 
-    def get_cases(self, suite_id=None):
-        """Get all test cases for the suite (handles pagination via _links.next)."""
+    def get_cases(self, suite_id=None, section_id=None):
+        """Get all test cases for the suite (handles pagination via _links.next).
+
+        Args:
+            suite_id: TestRail suite ID.  Defaults to the primary configured suite.
+            section_id: Kept for API signature compatibility but intentionally
+                NOT forwarded to the TestRail ``get_cases`` endpoint.
+
+                The TestRail API ``get_cases?section_id=X`` only matches cases
+                directly inside section X – it does NOT recurse into child
+                sections.  Descendant filtering is therefore handled in Python
+                by ``SyncService._sync_suite`` after fetching all cases for the
+                suite.  Passing section_id to the API would silently return 0
+                cases whenever the configured group is a parent folder.
+        """
         suite_id = suite_id or self.suite_id
         if not self.project_id:
             logger.error("project_id not available, cannot fetch cases")
             return None
+
+        if section_id:
+            logger.info(
+                f"get_cases called with section_id={section_id}; "
+                f"descendant filtering will be applied in Python after fetching "
+                f"all {suite_id} cases."
+            )
 
         all_cases = []
         offset = 0
         limit = 250  # TestRail API max limit per request
 
         while True:
-            endpoint = f'get_cases/{self.project_id}&suite_id={suite_id}&limit={limit}&offset={offset}'
+            endpoint = (
+                f'get_cases/{self.project_id}&suite_id={suite_id}'
+                f'&limit={limit}&offset={offset}'
+            )
             response = self._make_request('GET', endpoint)
 
             if not response:

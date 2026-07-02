@@ -174,7 +174,10 @@ function renderTable() {
                 <td class="text-center"><span class="badge bg-success">${section.automated_count}</span></td>
                 <td class="text-center"><span class="badge bg-warning text-dark">${section.manual_count}</span></td>
                 <td class="text-center"><span class="badge bg-info">${section.to_be_automated_count}</span></td>
-                <td class="text-center"><span class="badge bg-danger">${section.blocked_count ?? 0}</span></td>
+                <td class="text-center">
+                    <span class="badge bg-danger" title="Will Not Automate">${section.will_not_automate_count ?? 0}</span>
+                    ${(section.not_automatable_count ?? 0) > 0 ? `<span class="badge ms-1" style="background:rgba(111,66,193,0.9);" title="Not Automatable">${section.not_automatable_count}</span>` : ''}
+                </td>
                 <td class="text-center"><span class="badge ${badgeClass} automation-badge">${percentage}%</span></td>
                 <td><div class="progress"><div class="progress-bar ${progressBarClass}" role="progressbar" style="width: ${percentage}%" aria-valuenow="${percentage}" aria-valuemin="0" aria-valuemax="100">${percentage}%</div></div></td>
             </tr>
@@ -215,8 +218,8 @@ function exportToCSV() {
         alert('No data to export');
         return;
     }
-    const headers = ['Section ID', 'Section Name', 'Suite Name', 'Total Cases', 'Automated', 'Manual', 'To Be Automated', 'Will Not Automate', 'Other', 'Automation %'];
-    const rows = filteredData.map(section => [section.section_id, section.section_name, section.suite_name, section.total_cases, section.automated_count, section.manual_count, section.to_be_automated_count, section.blocked_count ?? 0, section.other_count, section.automation_percentage]);
+    const headers = ['Section ID', 'Section Name', 'Suite Name', 'Total Cases', 'Automated', 'Manual', 'To Be Automated', 'Will Not Automate', 'Not Automatable', 'Other', 'Automation %'];
+    const rows = filteredData.map(section => [section.section_id, section.section_name, section.suite_name, section.total_cases, section.automated_count, section.manual_count, section.to_be_automated_count, section.will_not_automate_count ?? 0, section.not_automatable_count ?? 0, section.other_count, section.automation_percentage]);
     const csvContent = [headers.join(','), ...rows.map(row => row.map(cell => `"${cell}"`).join(','))].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);

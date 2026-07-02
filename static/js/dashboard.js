@@ -13,6 +13,7 @@ const STATUS_LABELS = {
     '3': 'Will Not Automate',
     '4': 'Automated',
     '5': 'To Be Automated',
+    '7': 'Not Automatable',
     'null': 'No Status'
 };
 
@@ -23,6 +24,7 @@ const STATUS_COLORS = {
     '3': 'rgba(220, 53, 69, 0.8)',
     '4': 'rgba(25, 135, 84, 0.8)',
     '5': 'rgba(108, 117, 125, 0.8)',
+    '7': 'rgba(111, 66, 193, 0.8)',
     'null': 'rgba(173, 181, 189, 0.6)'
 };
 
@@ -367,12 +369,16 @@ function _renderSuiteComparisonBars(activeSuiteId) {
         const bd  = suite.automation_status_breakdown;
         const tot = suite.total_cases || 1;
 
-        const automatedPct  = ((bd['4']    || 0) / tot * 100).toFixed(1);
-        const manualPct     = ((bd['1']    || 0) / tot * 100).toFixed(1);
-        const toAutomatePct = ((bd['5']    || 0) / tot * 100).toFixed(1);
-        const wontAutoPct   = ((bd['3']    || 0) / tot * 100).toFixed(1);
-        const otherPct      = (100 - parseFloat(automatedPct) - parseFloat(manualPct)
-                                   - parseFloat(toAutomatePct) - parseFloat(wontAutoPct)).toFixed(1);
+        const automatedPct      = ((bd['4'] || 0) / tot * 100).toFixed(1);
+        const manualPct         = ((bd['1'] || 0) / tot * 100).toFixed(1);
+        const toAutomatePct     = ((bd['5'] || 0) / tot * 100).toFixed(1);
+        const wontAutoPct       = ((bd['3'] || 0) / tot * 100).toFixed(1);
+        const notAutomatablePct = ((bd['7'] || 0) / tot * 100).toFixed(1);
+        const otherPct          = Math.max(0,
+            100 - parseFloat(automatedPct) - parseFloat(manualPct)
+                - parseFloat(toAutomatePct) - parseFloat(wontAutoPct)
+                - parseFloat(notAutomatablePct)
+        ).toFixed(1);
 
         return `
             <div class="mb-3">
@@ -401,8 +407,13 @@ function _renderSuiteComparisonBars(activeSuiteId) {
                          title="Will Not Automate: ${bd['3'] || 0}">
                         ${parseFloat(wontAutoPct) > 6 ? wontAutoPct + '%' : ''}
                     </div>
+                    <div class="progress-bar"
+                         style="width:${notAutomatablePct}%;background:rgba(111,66,193,0.8);"
+                         title="Not Automatable: ${bd['7'] || 0}">
+                        ${parseFloat(notAutomatablePct) > 6 ? notAutomatablePct + '%' : ''}
+                    </div>
                     <div class="progress-bar bg-light text-dark"
-                         style="width:${Math.max(0, parseFloat(otherPct))}%"
+                         style="width:${otherPct}%"
                          title="Other / No Status">
                     </div>
                 </div>
@@ -412,6 +423,7 @@ function _renderSuiteComparisonBars(activeSuiteId) {
                     <span style="color:#ffc107;"><strong>${bd['1'] || 0}</strong> manual</span>
                     <span><strong>${bd['5'] || 0}</strong> to automate</span>
                     <span style="color:#dc3545;"><strong>${bd['3'] || 0}</strong> won't automate</span>
+                    <span style="color:#6f42c1;"><strong>${bd['7'] || 0}</strong> not automatable</span>
                 </div>
             </div>
         `;
@@ -419,11 +431,12 @@ function _renderSuiteComparisonBars(activeSuiteId) {
 
     // Legend for the stacked bars
     const legendItems = [
-        { color: '#198754', label: 'Automated' },
-        { color: '#ffc107', label: 'Manual' },
+        { color: '#198754',              label: 'Automated' },
+        { color: '#ffc107',              label: 'Manual' },
         { color: 'rgba(108,117,125,0.7)', label: 'To Be Automated' },
-        { color: '#dc3545', label: 'Will Not Automate' },
-        { color: '#e9ecef', label: 'Other / No Status' }
+        { color: '#dc3545',              label: 'Will Not Automate' },
+        { color: 'rgba(111,66,193,0.8)', label: 'Not Automatable' },
+        { color: '#e9ecef',              label: 'Other / No Status' }
     ];
 
     const legendHtml = legendItems.map(item => `
@@ -487,7 +500,7 @@ function _renderExplicitCoverageWidget(suiteId) {
     if (!container) return;
 
     // Helper to render one suite's explicit coverage block
-    function _suiteBlock(suiteName, automatedCount, manualCount, explicitTotal, explicitPct, totalCases, highlight, excludedCount) {
+    function _suiteBlock(suiteName, automatedCount, manualCount, toBeAutomatedCount, explicitTotal, explicitPct, totalCases, highlight, excludedCount) {
         const barColor   = explicitPct >= 75 ? '#198754' : explicitPct >= 50 ? '#0d6efd' : '#ffc107';
         const badgeCls   = explicitPct >= 75 ? 'bg-success' : explicitPct >= 50 ? 'bg-primary' : 'bg-warning text-dark';
         const borderCls  = highlight ? 'border-2 border-primary shadow-sm' : '';
@@ -504,7 +517,7 @@ function _renderExplicitCoverageWidget(suiteId) {
 
                         <!-- Big gauge progress bar -->
                         <div class="progress mb-2" style="height:18px;border-radius:6px;"
-                             title="${automatedCount} Automated out of ${explicitTotal} (Automated + Manual)">
+                             title="${automatedCount} Automated out of ${explicitTotal} (Automated + Manual + To Be Automated)">
                             <div class="progress-bar"
                                  style="width:${explicitPct}%;background:${barColor};font-size:12px;font-weight:600;">
                                 ${explicitPct > 12 ? explicitPct + '%' : ''}
@@ -513,22 +526,28 @@ function _renderExplicitCoverageWidget(suiteId) {
 
                         <!-- Counts row -->
                         <div class="row g-2 text-center mt-1">
-                            <div class="col-4">
+                            <div class="col-3">
                                 <div class="border rounded py-2 px-1">
                                     <div class="fw-bold text-success" style="font-size:1.1rem;">${automatedCount}</div>
                                     <div class="text-muted" style="font-size:10px;">Automated</div>
                                 </div>
                             </div>
-                            <div class="col-4">
+                            <div class="col-3">
                                 <div class="border rounded py-2 px-1">
                                     <div class="fw-bold text-warning" style="font-size:1.1rem;">${manualCount}</div>
                                     <div class="text-muted" style="font-size:10px;">Manual</div>
                                 </div>
                             </div>
-                            <div class="col-4">
+                            <div class="col-3">
+                                <div class="border rounded py-2 px-1">
+                                    <div class="fw-bold" style="font-size:1.1rem;color:#6c757d;">${toBeAutomatedCount}</div>
+                                    <div class="text-muted" style="font-size:10px;">To Automate</div>
+                                </div>
+                            </div>
+                            <div class="col-3">
                                 <div class="border rounded py-2 px-1">
                                     <div class="fw-bold" style="font-size:1.1rem;">${explicitTotal}</div>
-                                    <div class="text-muted" style="font-size:10px;">Explicit Total</div>
+                                    <div class="text-muted" style="font-size:10px;">Total</div>
                                 </div>
                             </div>
                         </div>
@@ -555,6 +574,7 @@ function _renderExplicitCoverageWidget(suiteId) {
             'All Suites',
             _allSuitesStats.automated_count,
             _allSuitesStats.manual_count,
+            _allSuitesStats.to_be_automated_count || 0,
             _allSuitesStats.explicit_total,
             _allSuitesStats.explicit_automation_percentage,
             _allSuitesStats.total_cases,
@@ -567,6 +587,7 @@ function _renderExplicitCoverageWidget(suiteId) {
                 s.suite_name || `Suite ${s.suite_id}`,
                 s.automated_count,
                 s.manual_count,
+                s.to_be_automated_count || 0,
                 s.explicit_total,
                 s.explicit_automation_percentage,
                 s.total_cases,
@@ -588,6 +609,7 @@ function _renderExplicitCoverageWidget(suiteId) {
                     suite.suite_name || `Suite ${suite.suite_id}`,
                     suite.automated_count,
                     suite.manual_count,
+                    suite.to_be_automated_count || 0,
                     suite.explicit_total,
                     suite.explicit_automation_percentage,
                     suite.total_cases,
@@ -601,14 +623,15 @@ function _renderExplicitCoverageWidget(suiteId) {
                         </h6>
                         <div class="mb-2">
                             <code class="d-block p-2 bg-white border rounded" style="font-size:13px;">
-                                Explicit Coverage = Automated ÷ (Automated + Manual) × 100
+                                Explicit Coverage = Automated ÷ (Automated + Manual + To Be Automated) × 100
                             </code>
                         </div>
                         <ul class="small text-muted mb-0 mt-2 ps-3">
                             <li><strong>Automated (${suite.automated_count})</strong> — status 4</li>
                             <li><strong>Manual (${suite.manual_count})</strong> — status 1</li>
+                            <li><strong>To Be Automated (${suite.to_be_automated_count || 0})</strong> — status 5</li>
                             <li>Excluded from denominator: Obsolete, Will Not Automate,
-                                To Be Automated, No Status
+                                Not Automatable &amp; No Status
                                 (${suite.total_cases - suite.explicit_total} cases)</li>
                         </ul>
                     </div>

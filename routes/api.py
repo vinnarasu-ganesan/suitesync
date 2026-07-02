@@ -59,8 +59,18 @@ def _is_case_excluded(case, excluded_ids, excluded_names):
 
 
 def _automation_breakdown(cases):
-    """Build an automation-status breakdown dict from a list of cases."""
-    breakdown = {'0': 0, '1': 0, '2': 0, '3': 0, '4': 0, '5': 0, 'null': 0}
+    """Build an automation-status breakdown dict from a list of cases.
+
+    Known TestRail custom_automation_status codes:
+        0 = Deleted
+        1 = Manual
+        2 = Obsolete
+        3 = Will Not Automate
+        4 = Automated
+        5 = To Be Automated
+        7 = Not Automatable  ← distinct from 'null' (no value set at all)
+    """
+    breakdown = {'0': 0, '1': 0, '2': 0, '3': 0, '4': 0, '5': 0, '7': 0, 'null': 0}
     for case in cases:
         if case.custom_fields and 'custom_automation_status' in case.custom_fields:
             status = str(case.custom_fields['custom_automation_status'])
@@ -482,6 +492,7 @@ def get_testrail_stats():
         '3': 0,  # Will Not Automate
         '4': 0,  # Automated
         '5': 0,  # To Be Automated
+        '7': 0,  # Not Automatable
         'null': 0
     }
 
@@ -501,13 +512,16 @@ def get_testrail_stats():
         else:
             automation_status_breakdown['null'] += 1
 
-    automated_count       = automation_status_breakdown.get('4', 0)
-    manual_count          = automation_status_breakdown.get('1', 0)
-    automation_percentage = round((automated_count / total_cases) * 100, 1) if total_cases > 0 else 0
+    automated_count        = automation_status_breakdown.get('4', 0)
+    manual_count           = automation_status_breakdown.get('1', 0)
+    to_be_automated_count  = automation_status_breakdown.get('5', 0)
+    automation_percentage  = round((automated_count / total_cases) * 100, 1) if total_cases > 0 else 0
 
-    # Explicit coverage: Automated ÷ (Automated + Manual) × 100
-    explicit_total                  = automated_count + manual_count
-    explicit_automation_percentage  = round((automated_count / explicit_total) * 100, 1) if explicit_total > 0 else 0
+    # Explicit coverage: Automated ÷ (Automated + Manual + To Be Automated) × 100
+    # Excluded from denominator: Obsolete (2), Will Not Automate (3),
+    #                            Not Automatable (7), No Status (null/0)
+    explicit_total                 = automated_count + manual_count + to_be_automated_count
+    explicit_automation_percentage = round((automated_count / explicit_total) * 100, 1) if explicit_total > 0 else 0
 
     return jsonify({
         'total_cases': total_cases,
@@ -518,6 +532,7 @@ def get_testrail_stats():
         'automation_status_breakdown': automation_status_breakdown,
         'automated_count': automated_count,
         'manual_count': manual_count,
+        'to_be_automated_count': to_be_automated_count,
         'automation_percentage': automation_percentage,
         'explicit_total': explicit_total,
         'explicit_automation_percentage': explicit_automation_percentage,
@@ -561,7 +576,7 @@ def get_section_automation_stats():
                     'manual_count': 0,
                     'to_be_automated_count': 0,
                     'will_not_automate_count': 0,
-                    'blocked_count': 0,
+                    'not_automatable_count': 0,
                     'other_count': 0
                 }
 
@@ -570,16 +585,16 @@ def get_section_automation_stats():
             # Count automation status
             if case.custom_fields and 'custom_automation_status' in case.custom_fields:
                 status = str(case.custom_fields['custom_automation_status'])
-                if status == '4':  # Automated
+                if status == '4':    # Automated
                     section_map[section_id]['automated_count'] += 1
                 elif status == '1':  # Manual
                     section_map[section_id]['manual_count'] += 1
                 elif status == '5':  # To Be Automated
                     section_map[section_id]['to_be_automated_count'] += 1
-                elif status == '7':  # Not Automatable
+                elif status == '3':  # Will Not Automate
                     section_map[section_id]['will_not_automate_count'] += 1
-                elif status == '3':  # Blocked
-                    section_map[section_id]['blocked_count'] += 1
+                elif status == '7':  # Not Automatable
+                    section_map[section_id]['not_automatable_count'] += 1
                 else:
                     section_map[section_id]['other_count'] += 1
             else:
@@ -649,12 +664,14 @@ def get_testrail_stats_by_suite():
             excluded_count = len(excluded_cases)
             excluded_status_breakdown = _automation_breakdown(excluded_cases)
 
-            automated_count = breakdown.get('4', 0)
-            manual_count    = breakdown.get('1', 0)
-            automation_pct  = round((automated_count / total_cases) * 100, 1) if total_cases > 0 else 0
+            automated_count       = breakdown.get('4', 0)
+            manual_count          = breakdown.get('1', 0)
+            to_be_automated_count = breakdown.get('5', 0)
+            automation_pct        = round((automated_count / total_cases) * 100, 1) if total_cases > 0 else 0
 
-            # Explicit coverage: Automated ÷ (Automated + Manual) × 100
-            explicit_total = automated_count + manual_count
+            # Explicit coverage: Automated ÷ (Automated + Manual + To Be Automated) × 100
+            # Excluded: Obsolete (2), Will Not Automate (3), Not Automatable (7), No Status (null)
+            explicit_total = automated_count + manual_count + to_be_automated_count
             explicit_pct   = round((automated_count / explicit_total) * 100, 1) if explicit_total > 0 else 0
 
             result.append({
@@ -664,6 +681,7 @@ def get_testrail_stats_by_suite():
                 'automation_status_breakdown': breakdown,
                 'automated_count': automated_count,
                 'manual_count': manual_count,
+                'to_be_automated_count': to_be_automated_count,
                 'automation_percentage': automation_pct,
                 'explicit_total': explicit_total,
                 'explicit_automation_percentage': explicit_pct,
